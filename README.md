@@ -111,6 +111,14 @@ See [`_shared/deployment-tier.md`](./_shared/deployment-tier.md) for the full pe
 | **Onboard** | `/onboard` | Project onboarding — all 10 personas assess an existing project cold, produce a health scorecard (R/Y/G), documentation inventory, and initial backlog |
 | **Retrospective** | `/retro` | End-of-session retrospective. Honest assessment including PO feedback, agent self-critique, and each persona's perspective with disagreements |
 
+## Operational Skills
+
+Single-purpose orchestrator skills that guard a specific operational concern. They don't spawn personas — they enforce a checklist or gate against the orchestrator's own actions.
+
+| Skill | Command | Purpose |
+|-------|---------|---------|
+| **Release Check** | `/release-check` | Pre-release semantic readiness — verifies open P0/P1 bugs are clear, in-flight verification agents have completed, and the PO has explicitly confirmed before any release-execution agent fires |
+
 ## Shared Foundations
 
 | File | Purpose |
@@ -268,6 +276,14 @@ Use ceremonies to coordinate the full team:
 /team-review         # Full team review of existing work
 /postmortem          # Blameless incident analysis
 /retro               # End-of-session retrospective
+```
+
+### Operational Skills
+
+Single-purpose orchestrator skills — no persona spawns, just a checklist or gate:
+
+```bash
+/release-check       # Pre-release readiness gate — verifies P0/P1 bugs clear, in-flight verification done, PO confirms
 ```
 
 ### Ceremony Workflow

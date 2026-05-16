@@ -6,6 +6,24 @@ Each `SKILL.md` carries a `version:` field in its frontmatter showing the system
 
 ## [Unreleased]
 
+## [0.3.0]
+
+Orchestration discipline upgrades from retro analysis (18 sessions, 2026-04-19 → 2026-05-14). New `/release-check` skill, expanded orchestrator rules, and a pre-existing-failure escalation clause.
+
+### Added
+- **`/release-check` skill** — pre-release semantic readiness check. Verifies open P0/P1 bugs in sprint scope, in-flight verification agents, open PRs targeting the release branch, and security gate state. Produces a checklist for PO confirmation and refuses to fire release-execution without explicit go.
+- **`_shared/orchestration.md` §"Authorization Verbs"** — verb-mapping table ("ship it" → push+PR, "merge it" → merge, "go" → execute the immediately-prior proposed action) and rule for catch-all instructions vs flagged decisions.
+- **`_shared/orchestration.md` §"Findings From Personas Are Notes, Not Beads"** — orchestrator-level rule against filing beads on persona-surfaced sibling concerns without PO authorization.
+- **`_shared/orchestration.md` §"Re-Verify Gates on Engineer Report"** — engineer's "gates green" report is the start of verification, not the end; orchestrator re-runs gates against the merged or worktree state before declaring done.
+- **`_shared/orchestration.md` §"Definition of Done for User-Reported Bugs"** — merged ≠ deployed ≠ reporter notified ≠ reporter confirmed.
+
+### Changed
+- **`_shared/orchestration.md` §"Claude Orchestrates — Personas Implement"** — rewritten around "skills define each persona's scope." Adds hard limit of 3 pre-dispatch reads, explicit orchestrator-territory vs persona-territory enumeration (durable artifacts are always persona work, including bead descriptions, ADRs, in-repo docs), named-rationalization rejections, and a mid-task drift clause.
+- **`_shared/orchestration.md` §"Worktree Isolation for Write-Mode Agents"** — trigger expanded from "will commit" to "might commit." New subsections: orchestrator-self discipline (verify `pwd`/`branch`/`status` before destructive git ops; delegate cleanup to engineer when parallel agents are running) and CWD drift (prefer absolute paths over `cd` chains).
+- **`_shared/orchestration.md` §"Verify Premises Before Briefing"** — added framing checks (source/environment, already-shipped, inherited premise) alongside the existing data checks (pagination, child counts, status). Default assumption for user reports is now "customer in production."
+- **`_shared/orchestration.md` §"Decision Prompts"** (renamed from "Decision Prompt Compression") — structured `## DECISIONS NEEDED` block at end of message, dependency notation, hard cap of 3 decisions per message, one-by-one mode for complex decisions.
+- **`_shared/engineering-discipline.md` §"Pre-Existing Failures Are Not Background Noise"** — added escalation clause: pre-existing failures recurring across sessions escalate to RED at the next standup.
+
 ## [0.2.0]
 
 Tier-aware personas, per-task model selection, and explicit versioning.

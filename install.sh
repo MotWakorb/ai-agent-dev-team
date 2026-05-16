@@ -50,6 +50,7 @@ SKILLS=(
   spike
   postmortem
   onboard
+  release-check
 )
 
 echo "Installing Claude Agent Dev Team skills..."

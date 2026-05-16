@@ -70,6 +70,8 @@ When you observe pre-existing test failures during your work — failures that a
 
 The action is small: note the failing tests, file a backlog candidate with enough context to reproduce, and continue your work. The cost of not doing it compounds — real regressions hide in the noise of accepted failures.
 
+**Escalation**: filing the bead is the minimum. If the same pre-existing failures appear in the next session — meaning the bead has rotted without action — escalate to RED at the next standup. Accepted-failure beads becoming permanent is the exact failure mode this rule guards against; the bead is a leading indicator, not a resolution.
+
 ## Bulk Operations Multiply Latent Severity
 
 When building a bulk variant of an existing single-item operation, audit which previously-acceptable latent behaviors become user-visible at scale. A bug in a single-item PUT that has never generated a support ticket at 1-row scope may become a user-facing footgun at 500-row bulk scope.
