@@ -44,6 +44,16 @@ Past violations all arrived with a justification. The justifications are precede
 
 When a persona reports back, the orchestrator synthesizes and frames decisions for the PO. Follow-up edits are new dispatches, not orchestrator hand-finishing.
 
+### Mid-run termination is not orchestrator-finish authorization
+
+When a persona sub-agent terminates mid-run (API error, hang, turn-budget exhaustion, network drop) with uncommitted or partially-committed work, the orchestrator re-dispatches the persona with a continuation brief. The orchestrator does NOT commit the persona's uncommitted edits, push the persona's pending branch, finalize the last few lines, or bump version files itself — even when "95% of the work is done." Three concrete failure modes:
+
+- **Bypasses dual-review.** The persona's last edits never get reviewed by code-reviewer or QA; the orchestrator-finish step injects unverified content under the persona's commit history
+- **False-positive gate state.** Passing tests or lint against the uncommitted state may not reflect what would have committed; the orchestrator's "all green" report misleads the PO
+- **Precedent erosion.** Each "just this once" exception sets the next bar lower. The firewall holds because no exceptions are made, not because the exceptions are small
+
+Cost of re-spawn: minutes. Cost of orchestrator-finish becoming routine: the persona firewall itself. The named rationalizations ("the engineer was almost done," "I have all the context," "it's just version bumps") are the same trap the pre-dispatch hard-limit rule guards against.
+
 ## Worktree Isolation for Write-Mode Agents
 
 Default to `isolation: "worktree"` for any agent that *might* commit. The cost of an unnecessary worktree is small; the cost of a collision is hours of recovery.
@@ -67,6 +77,14 @@ Verify cwd and branch first:
     pwd && git branch --show-current && git status --short
 
 If parallel agents are running, the safer move is to delegate the cleanup to the engineer in their own worktree, not to do it from the main tree.
+
+### Reviewer briefs require explicit tool discipline
+
+Briefs that dispatch a persona in review mode (code-reviewer, qa-engineer, security-engineer, or any persona invoked to assess existing work without changing it) MUST include verbatim language restricting the agent to read-only operations:
+
+> "READ-ONLY. Do not run Edit, Write, NotebookEdit, or any state-mutating Bash command — `git reset`, `git checkout -- <path>`, `git restore`, `git clean`, `git branch -D`, `rm`, formatters without `--check`, `pre-commit run` without `--show-diff-on-failure`. Report findings; do not apply them."
+
+The brief-level instruction is necessary because tool access is inherited from the parent — the agent has Edit and destructive Bash available regardless of what the SKILL.md says. The brief is the only fence between the persona and the worktree. Reviewer-driven `git reset --hard` loops, silent formatter runs, and "let me just fix this one line" mid-review are the documented failure mode — and they corrupt parallel engineer work in the same tree.
 
 ### CWD drift
 
@@ -197,6 +215,8 @@ When delegating to N agents, a wrong premise in the brief multiplies N times. Be
 - **Pagination**: If you queried an API with pagination, check whether there are more pages. Reporting "37 alerts" when there are 53 sends 10 personas into grooming with a wrong baseline.
 - **Child counts**: If you report that an epic has N children, drill into each child to check for grandchildren. Reporting "1 child" when there are 5 sends every persona into sizing with a wrong scope.
 - **Status**: If you report a bead or PR as being in a certain state, verify it at query time. Board state changes between sessions.
+- **Post-disconnect / post-gap re-verify**: After any disconnect, context compaction, summary handoff, or gap where state could have changed, re-query board and PR state before briefing the next agent. "Bead was open last we looked" is not a current premise. A stale brief built on a closed bead or merged PR sends the agent to fix work that's already shipped — and the resulting "not reproducible" close looks like new information rather than orchestrator error.
+- **HEAD over working tree**: When forming a brief that asserts "the engineer's pushed work is missing X" or "the engineer's pushed code does Y," verify against `git show <commit>:<file>` or `gh api .../files`, not the working tree. Working trees drift — reviewer contamination, partial reverts, uncommitted hotfixes, switched branches. HEAD is what's actually under review. A brief built on a contaminated working tree wastes engineer rounds and erodes the orchestrator's credibility when the asserted gap turns out not to exist.
 
 ### Framing checks
 

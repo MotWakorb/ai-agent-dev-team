@@ -47,6 +47,14 @@ A green build, lint, or type check is the start of verification, not the end. Be
 
 **"It builds" is not "it works."**
 
+### Persisted and Live-Surface Verification
+
+When the bug describes a value that's wrong in a live surface — a metric, a count, an API response payload, a rendered page, a persisted column — inspect the persisted artifact FIRST and trace `compute → persist → serialize → format` before editing the compute layer. Green unit tests next to a wrong live value localize the bug to the layers the tests don't cross — usually persistence, serialization, or the integration boundary. Adding another unit test does not move you closer to the fix.
+
+Probing one function with hand-built inputs is **synthetic verification**, not live verification. It produces false confidence and ships regressions. The verification of a reporting fix is the report rendering the right value in the live surface — read the database row, hit the API endpoint, load the page. The verification of an integration fix is the real upstream → real handler → real downstream path executing end-to-end, not the handler executing against hand-built inputs.
+
+This applies to every persona writing code: the engineer producing the fix, the reviewer assessing whether the fix is verified, the QA evaluating test strategy. A "fix" without a persisted/live-surface check is a candidate fix, not a verified one.
+
 ## Version Currency
 
 When hardcoding a version for a dependency, action, base image, or tool, check the latest release first. Do not assume a version is current — look it up. Stale versions are silent tech debt that compounds.
@@ -85,6 +93,14 @@ When things go wrong, the instinct is to summarize, suggest a fresh start, or de
 ## Correctness Over Speed
 
 A quick fix without root cause analysis is a form of damage — it masks the real problem and creates rework. Slow down when you feel pressure to close. The standard is correctness.
+
+## Stage Unvalidated Fixes
+
+When the root cause is uncertain and the plan calls for both instrumentation and a speculative fix, ship the instrumentation alone first. Let the next incident, log capture, or live observation confirm or kill the hypothesis. Ship the fix on a second iteration, against real evidence.
+
+Bundling instrumentation and a speculative fix in one build defeats the purpose of the instrumentation. When the next data round arrives, multiple variables have changed at once and you can't tell whether the fix worked, whether the symptom moved, or whether you introduced a new failure mode. The cost is one extra release cycle; the value is interpretable data.
+
+The same logic governs bead state. A bead whose acceptance criteria are "real-world validation pending" is not the same as a closed-and-proven bead. Mark these explicitly — an `awaiting-validation` label, a follow-up validation bead, or a clear note in the closing comment — so they don't get conflated with proven fixes during grooming. A closed bead is a claim about state; an unvalidated speculative fix is a hypothesis.
 
 ## Completeness Over Sampling
 

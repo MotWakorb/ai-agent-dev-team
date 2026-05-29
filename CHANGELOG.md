@@ -6,6 +6,21 @@ Each `SKILL.md` carries a `version:` field in its frontmatter showing the system
 
 ## [Unreleased]
 
+Second-wave retro-driven rule additions (7 retros, 2026-05-17 → 2026-05-29). Tightens reviewer sub-agent discipline, introduces verification-against-the-live-surface as a tier-invariant rule, codifies "no orchestrator-finish" on mid-run termination, and adds a recurring-regression test-strategy pattern.
+
+### Added
+- **`code-reviewer/SKILL.md` §"Tool Discipline When Spawned as Sub-Agent"** — read-only effective tool set when dispatched as a review sub-agent. Explicitly forbids `Edit`/`Write`/`NotebookEdit` and state-mutating Bash regardless of inherited tool access. Brief-level instruction is the fence.
+- **`code-reviewer/SKILL.md` §"PR Review Summary"** — verdict header must match body severity. `Approved`-class headers reserved for non-blocking observations; any blocker in the body requires `Changes Requested` or `Blocked`. Downstream readers and orchestrators key on the header for merge decisions.
+- **`qa-engineer/SKILL.md` §"When Spawned as a Review Sub-Agent"** — combined tool discipline + verdict-header rule for QA when invoked in review mode (`/team-review`, `/release-check`, or direct dispatch).
+- **`qa-engineer/SKILL.md` §"Recurring Regressions Are a Test-Strategy Signal"** — when the same surface regresses across 3+ rounds with unit tests green, the missing layer is integration-with-real-data. Golden-fixture end-to-end tests and parity/boundary tests as the response, not more unit tests.
+- **`_shared/engineering-discipline.md` §"Persisted and Live-Surface Verification"** (subsection of Verification of Completion) — for reporting/integration bugs, inspect the persisted artifact and trace `compute → persist → serialize → format` before editing the compute layer. Synthetic verification (hand-built inputs to one function) produces false confidence; live verification requires the real surface.
+- **`_shared/engineering-discipline.md` §"Stage Unvalidated Fixes"** — when a fix is speculative and shipped alongside instrumentation, ship instrumentation alone first so the next data round can isolate variables. Bead state for unvalidated fixes must be distinguishable from closed-and-proven.
+- **`_shared/orchestration.md` §"Mid-run termination is not orchestrator-finish authorization"** (subsection of Claude Orchestrates — Personas Implement) — when a persona sub-agent terminates mid-run with uncommitted work, the orchestrator re-dispatches the persona; it does NOT commit, push, or finalize the persona's pending work itself.
+- **`_shared/orchestration.md` §"Reviewer briefs require explicit tool discipline"** (subsection of Worktree Isolation) — verbatim brief language requiring read-only operations for any persona dispatched in review mode. Pair to the `code-reviewer`/`qa-engineer` SKILL-level discipline.
+
+### Changed
+- **`_shared/orchestration.md` §"Verify Premises Before Briefing"** — added two data-check bullets: post-disconnect / post-gap re-verify (re-query board and PR state after any context gap before forwarding to the next agent) and HEAD-over-working-tree (verify briefs that assert "engineer's pushed code does/doesn't X" against `git show HEAD:<file>`, not the working tree).
+
 ## [0.3.0]
 
 Orchestration discipline upgrades from retro analysis (18 sessions, 2026-04-19 → 2026-05-14). New `/release-check` skill, expanded orchestrator rules, and a pre-existing-failure escalation clause.
