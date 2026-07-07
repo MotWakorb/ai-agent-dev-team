@@ -81,9 +81,12 @@ Items that don't pass the value gate don't get refined. Refining work that shoul
 
 Spawn all 10 personas in parallel using the Agent tool, each evaluating **ALL items in a single pass**. This is batch mode — each persona is spawned once regardless of how many items are being groomed. **IMPORTANT: All agents must be spawned as `general-purpose` type** (subagent_type: "general-purpose").
 
+**Default to identity.md, not SKILL.md.** Readiness checks, S/M/L sizing, and acceptance-criteria drafting are pattern-matching — identity.md carries the domain authority and biases this needs at a fraction of the context load per agent. Use the full SKILL.md read (**deep-groom**) only when the PO requests it or a specific bead is flagged complex or high-risk during the value gate — and then only for the personas whose domain the complexity lives in.
+
 **Each agent prompt:**
 ```
-Read ~/.claude/skills/[persona]/SKILL.md for your domain scope.
+Read ~/.claude/skills/[persona]/identity.md for your domain scope.
+[Deep-groom only: Read ~/.claude/skills/[persona]/SKILL.md instead.]
 
 You are the [Persona]. We are grooming the following backlog items for readiness.
 Advocate for your domain with evidence. Flag concerns, not accommodations.

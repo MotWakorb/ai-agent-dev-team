@@ -1,6 +1,6 @@
 ---
 name: team-plan
-description: Parallel team planning — spawns all six persona agents to analyze a project brief simultaneously, then facilitates a team debate surfacing conflicts and decision points for the PO.
+description: Parallel team planning — spawns all ten persona agents to analyze a project brief simultaneously, then facilitates a team debate surfacing conflicts and decision points for the PO.
 when_to_use: project planning, new project kickoff, feature planning, initiative planning, team planning session
 user-invocable: true
 version: 0.2.0
@@ -8,7 +8,7 @@ version: 0.2.0
 
 # Team Planning Session
 
-This skill orchestrates a parallel planning session across all six personas. Each persona analyzes the project brief independently, then the team comes together to debate, disagree, and produce a unified plan with decision points for the PO.
+This skill orchestrates a parallel planning session across all ten personas. Each persona analyzes the project brief independently, then the team comes together to debate, disagree, and produce a unified plan with decision points for the PO.
 
 ## Preflight: Verify Onboarding & Effective Tier
 
@@ -75,11 +75,12 @@ Default to **quick** unless the PO specifies full or the project scope clearly w
 ### Step 2: Spawn Parallel Agents
 
 Launch all 10 persona agents simultaneously using the Agent tool. **IMPORTANT: All agents must be spawned as `general-purpose` type** (subagent_type: "general-purpose"). The persona identity comes from the prompt, not the agent type. Each agent must:
-1. Read their persona skill file for full context
-2. Read the shared engineering discipline and conflict resolution protocol
-3. Analyze the project brief from their domain perspective
-4. Produce their domain-specific output
-5. Explicitly note where they anticipate disagreement with other personas
+1. Read their persona file — depth-dependent, see below
+2. Analyze the project brief from their domain perspective
+3. Produce their domain-specific output
+4. Explicitly note where they anticipate disagreement with other personas
+
+**File reads scale with depth mode.** The prompts below open with the full-mode read line. In **quick mode**, replace that first line of every prompt with `Read ~/.claude/skills/<persona>/identity.md.` and drop the SKILL.md / engineering-discipline.md / conflict-resolution.md reads entirely — identity.md carries the domain authority, biases, and standup triggers that quick-mode analysis needs, at a fraction of the context load per agent. Full mode keeps the read line as written.
 
 **Each agent prompt must include:**
 - The full project brief from the PO

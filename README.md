@@ -127,7 +127,7 @@ Single-purpose orchestrator skills that guard a specific operational concern. Th
 | `_shared/engineering-discipline.md` | Evidence over intuition. Verify before asserting. Completeness over sampling. Known failure modes. Naming discipline. One-way door protocol |
 | `_shared/orchestration.md` | Orchestrator discipline — how Claude dispatches agents, isolates worktrees, picks models per task, compresses decisions, and avoids merging past in-flight verification. Auto-loaded via `~/.claude/CLAUDE.md` |
 | `_shared/deployment-tier.md` | Tier definitions (home-lab / small-team / startup / enterprise) and per-persona calibration tables. Personas read this to right-size their recommendations to the deployment context |
-| `*/identity.md` | Condensed identity tier for each persona — used by two-phase standup and lightweight triage. Domain authority, professional biases, and standup triggers in ~15 lines |
+| `*/identity.md` | Condensed identity tier for each persona — used by two-phase standup, quick-mode `/team-plan` and `/team-review`, default `/grooming`, and lightweight triage. Domain authority, professional biases, and standup triggers in ~15 lines |
 
 ## Key Design Decisions
 
@@ -314,17 +314,17 @@ When Things Break
 ### Quick vs Full Mode
 
 `/team-plan`, `/team-review`, and `/grooming` support depth modes:
-- **Quick**: Bullet points, top 2-3 conflicts, concise output
-- **Full**: Complete structured output per each persona's format
+- **Quick**: Bullet points, top 2-3 conflicts, concise output. Agents load `identity.md` only — a fraction of the per-agent context of a full persona load
+- **Full**: Complete structured output per each persona's format. Agents load full `SKILL.md` plus the shared discipline docs
 
 `/spike` always targets only relevant personas (2-4), not all 10.
 `/standup` uses two-phase triage — Phase 1 loads `identity.md` only for fast R/Y/G, Phase 2 loads full `SKILL.md` for non-green personas only. Green is silent.
-`/grooming` runs in batch mode — each persona evaluates all items in a single pass, with a user value gate before any persona is spawned.
+`/grooming` runs in batch mode — each persona evaluates all items in a single pass, with a user value gate before any persona is spawned. Grooming agents load `identity.md` by default; **deep-groom** (PO-requested, or beads flagged complex at the value gate) loads full `SKILL.md` for the relevant personas only.
 `/postmortem` includes only personas relevant to the incident.
 
 ## How the Team Interacts
 
-Every pair of personas (45 unique pairs across 10 personas) has documented bidirectional interactions. Each persona knows:
+The significant persona relationships are documented in each persona's "Relationship to Other Personas" section (7 of 10 personas carry one today; coverage of the remaining pairs is tracked as backlog). Each persona knows:
 - What they own (domain authority)
 - What other personas own (where to defer)
 - Where they'll naturally disagree (professional bias)
@@ -488,9 +488,12 @@ Follow the pattern established by existing personas:
 claude-agent-dev-team/
 ├── _shared/
 │   ├── conflict-resolution.md       # Conflict resolution protocol
+│   ├── decision-prompts.md          # DECISIONS NEEDED block format reference
 │   ├── deployment-tier.md           # Tier definitions + per-persona calibration tables
 │   ├── engineering-discipline.md    # Engineering discipline principles
 │   └── orchestration.md            # Orchestrator discipline (agent dispatch, isolation, model selection, decisions)
+├── agents/
+│   └── persona-reviewer.md          # Read-only agent type for review-mode dispatch (no Edit/Write) — installed to ~/.claude/agents/
 ├── security-engineer/
 │   ├── SKILL.md                     # Full persona — Security Engineer (protector)
 │   └── identity.md                  # Condensed identity for triage

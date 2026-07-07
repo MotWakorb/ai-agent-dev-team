@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="${HOME}/.claude/skills"
+AGENTS_DIR="${HOME}/.claude/agents"
 RETRO_DIR="${HOME}/retros"
 MODE="symlink"
 
@@ -111,6 +112,33 @@ for skill in "${SKILLS[@]}"; do
   else
     cp -R "$source" "$target"
     echo "  COPY: ${skill}"
+  fi
+  installed=$((installed + 1))
+done
+
+echo ""
+
+# --- Install agent definitions (custom subagent types) ---
+mkdir -p "$AGENTS_DIR"
+for agent_file in "${REPO_DIR}/agents/"*.md; do
+  [ -e "$agent_file" ] || continue
+  base="$(basename "$agent_file")"
+  target="${AGENTS_DIR}/${base}"
+
+  if [ -L "$target" ]; then
+    rm "$target"
+  elif [ -f "$target" ] && [ "$MODE" = "symlink" ]; then
+    echo "  SKIP: agents/${base} (file exists — use --copy to overwrite, or remove manually)"
+    skipped=$((skipped + 1))
+    continue
+  fi
+
+  if [ "$MODE" = "symlink" ]; then
+    ln -s "$agent_file" "$target"
+    echo "  LINK: agents/${base}"
+  else
+    cp "$agent_file" "$target"
+    echo "  COPY: agents/${base}"
   fi
   installed=$((installed + 1))
 done

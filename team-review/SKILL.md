@@ -1,6 +1,6 @@
 ---
 name: team-review
-description: Parallel team review — spawns all six persona agents to review existing work (code, architecture, design, infrastructure) simultaneously, then facilitates a team debate surfacing findings and decision points for the PO.
+description: Parallel team review — spawns all ten persona agents to review existing work (code, architecture, design, infrastructure) simultaneously, then facilitates a team debate surfacing findings and decision points for the PO.
 when_to_use: code review, architecture review, security review, design review, comprehensive review, team review
 user-invocable: true
 version: 0.2.0
@@ -8,7 +8,7 @@ version: 0.2.0
 
 # Team Review Session
 
-This skill orchestrates a parallel review session across all six personas. Each persona reviews the target independently from their domain perspective, then the team comes together to debate findings and produce a unified assessment with decision points for the PO.
+This skill orchestrates a parallel review session across all ten personas. Each persona reviews the target independently from their domain perspective, then the team comes together to debate findings and produce a unified assessment with decision points for the PO.
 
 ## Preflight: Verify Onboarding & Effective Tier
 
@@ -75,12 +75,13 @@ Default to **quick** unless the PO specifies full or the review scope clearly wa
 
 ### Step 2: Spawn Parallel Agents
 
-Launch all 10 persona agents simultaneously using the Agent tool. **IMPORTANT: All agents must be spawned as `general-purpose` type** (subagent_type: "general-purpose"). The persona identity comes from the prompt, not the agent type. Each agent must:
-1. Read their persona skill file for full context
-2. Read the shared engineering discipline and conflict resolution protocol
-3. Review the target from their domain perspective
-4. Produce their domain-specific findings
-5. Explicitly note where they anticipate disagreement with other personas
+Launch all 10 persona agents simultaneously using the Agent tool. **Spawn as `persona-reviewer` type** (subagent_type: "persona-reviewer") — it is structurally read-only (no Edit/Write/NotebookEdit), which is what review mode requires. If that type isn't available in the environment, fall back to `general-purpose`. Either way the persona identity comes from the prompt, not the agent type. Each agent must:
+1. Read their persona file — depth-dependent, see below
+2. Review the target from their domain perspective
+3. Produce their domain-specific findings
+4. Explicitly note where they anticipate disagreement with other personas
+
+**File reads scale with depth mode.** The prompts below open with the full-mode read line. In **quick mode**, replace that first line of every prompt with `Read ~/.claude/skills/<persona>/identity.md.` and drop the SKILL.md / engineering-discipline.md / conflict-resolution.md reads entirely — identity.md carries the domain authority, biases, and standup triggers that a top-3-5-findings review needs, at a fraction of the context load per agent. Full mode keeps the read line as written. Review sub-agents in either mode remain READ-ONLY: the `persona-reviewer` type enforces it structurally for file edits, and the brief fence in `_shared/orchestration.md` §"Reviewer briefs require explicit tool discipline" covers destructive Bash — include that fence text in every prompt regardless of depth or agent type.
 
 **Each agent prompt must include:**
 - The review target (path, PR, document, etc.)

@@ -80,7 +80,9 @@ If parallel agents are running, the safer move is to delegate the cleanup to the
 
 ### Reviewer briefs require explicit tool discipline
 
-Briefs that dispatch a persona in review mode (code-reviewer, qa-engineer, security-engineer, or any persona invoked to assess existing work without changing it) MUST include verbatim language restricting the agent to read-only operations:
+Prefer structural enforcement first: dispatch review-mode personas as the `persona-reviewer` agent type (installed to `~/.claude/agents/` by install.sh) — it has no Edit, Write, or NotebookEdit tools at all, so the worst class of reviewer corruption becomes impossible rather than forbidden. Fall back to `general-purpose` only when the type isn't available in the environment.
+
+In either case, briefs that dispatch a persona in review mode (code-reviewer, qa-engineer, security-engineer, or any persona invoked to assess existing work without changing it) MUST include verbatim language restricting the agent to read-only operations — the agent type doesn't restrict Bash, and the fence is the only guard on destructive commands:
 
 > "READ-ONLY. Do not run Edit, Write, NotebookEdit, or any state-mutating Bash command — `git reset`, `git checkout -- <path>`, `git restore`, `git clean`, `git branch -D`, `rm`, formatters without `--check`, `pre-commit run` without `--show-diff-on-failure`. Report findings; do not apply them."
 
@@ -232,77 +234,13 @@ Alternatively, brief agents to self-verify their premises: "Before acting on the
 
 ## Decision Prompts
 
-When the PO needs to decide something, the orchestrator surfaces the decision in a labeled block at the end of the message. The body provides context; the block is the action ask.
+Any message containing both synthesis/status/findings AND something for the PO to decide ends with a `## DECISIONS NEEDED` block — numbered entries (state / decision / options), each self-contained, hard cap 3 per message. A single buried decision is the failure mode this guards against.
 
-### When the block fires
-
-Any message containing both synthesis/status/findings AND something for the PO to decide gets a `## DECISIONS NEEDED` block at the end. The trigger is "decision exists," not "decision count" — a single buried decision is the failure mode this guards against.
-
-Exempt: messages that are *only* a question with no surrounding synthesis. The message itself is the decision; no block needed.
-
-### Block format
-
-The block uses a numbered list. Each entry has three lines: state, decision, options. Keep entries short — comprehensive context (persona excerpts, bead cross-references) belongs in artifacts, not in the block.
-
-Example shape (literal):
-
-    ## DECISIONS NEEDED
-
-    1. **MCP key rotation cadence**
-       - State: bd-826k3 open; user waiting on guidance
-       - Decision: rotate every 30d or 90d?
-       - Options:
-         - 30d — tighter security, more ops toil
-         - 90d — industry baseline, less friction
-
-    2. **Stats v2 backfill window**
-       - State: backfill script ready, run not scheduled
-       - Decision: backfill full history or last 90d only? (depends on #1 if rotation forces a re-key)
-       - Options:
-         - Full — ~6h runtime, complete data
-         - 90d — ~30m runtime, recent-only
-
-Numbered so the PO can answer "1: 90d, 2: full" and move on.
-
-### Dependencies and ordering
-
-If decisions depend on each other, order them so dependents come after their dependency, and note the dependency in plain text inside the dependent's entry ("depends on #1"). The PO can answer in sequence or override.
-
-### Cap and one-by-one mode
-
-Hard cap: 3 decisions per message. 4+ means split across messages — dumping is the failure mode this guards against.
-
-One-by-one mode: surface decisions sequentially when:
-- A decision has 4+ options
-- A decision has cross-cutting implications across personas
-- The PO has signaled they want focused discussion ("let's talk through it")
-
-The orchestrator can offer one-by-one explicitly ("Walk through these one at a time, or stack them?"); the PO can request it at any time.
-
-### Single-digit answers are not validation
-
-When the PO answers with a single digit ("2") or a single word ("Go"), that's a signal the format is working. But it's also a signal there's no backpressure when a prompt is overloaded — the PO will push through rather than push back. Don't rely on the PO to tell you a prompt is too dense; keep them short by default.
-
-### Anti-pattern
-
-A decision prompt that requires scrolling back through 3+ prior messages to understand the options. If you're tempted to write "as discussed above" or "per the earlier analysis," the entry in the block needs a self-contained recap, not a back-reference.
+Full format — example block, dependency ordering, one-by-one mode, anti-patterns: [`decision-prompts.md`](./decision-prompts.md). Read it before writing your first decision block of a session.
 
 ## Review History Before Re-Reviewing
 
-Before submitting new review findings on a PR that has prior review rounds, fetch the review history:
-
-```bash
-gh api repos/{owner}/{repo}/pulls/{number}/reviews
-gh api repos/{owner}/{repo}/pulls/{number}/comments
-```
-
-Cross-check your findings against what prior rounds already classified:
-
-- If a prior round classified an item as **non-blocking / follow-up / nice-to-have**, do not re-raise it as a must-fix or blocker in a new round. The classification was a deliberate decision, not an oversight.
-- If you have **new information** that changes the severity (e.g., a security implication the prior reviewer didn't consider), state the new information explicitly and explain why the reclassification is warranted.
-- If the PR is substantively complete and your findings are all enhancement-class, ship the PR and fix forward via beads.
-
-The cost of re-raising previously-classified items: each round adds review fatigue, especially for external contributors. A contributor who sees new blockers appear on round 5 that round 1 explicitly deferred will stop contributing. The cost of one fix-forward PR is lower than the cost of a contributor who walks away.
+Before submitting new review findings on a PR that has prior review rounds, fetch the review history (`gh api repos/{owner}/{repo}/pulls/{number}/reviews` and `.../comments`) and cross-check: do not re-raise items a prior round explicitly classified as non-blocking — reclassify only with stated new information. If remaining findings are all enhancement-class, ship and fix forward via beads. Full protocol and rationale: [`../code-reviewer/SKILL.md`](../code-reviewer/SKILL.md) §"Review History Discipline" — the same rule, from the persona that owns it.
 
 ## Re-Verify Gates on Engineer Report
 

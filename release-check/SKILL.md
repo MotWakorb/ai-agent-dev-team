@@ -45,7 +45,11 @@ Open PRs targeting the release branch are decisions the release would skip. Reco
 
 If the project uses CodeQL or similar, verify the last scan on the release branch is green. If gated to `main` only, note that the release-cut PR to main is the validation point.
 
-### Step 5: Produce the checklist and surface to PO
+### Step 5: Check version/changelog consistency
+
+If the project maintains a CHANGELOG with an `[Unreleased]` section and per-artifact version fields (`version:` in SKILL.md frontmatter for skill repos, `package.json`/`pyproject.toml` versions in code repos), verify every artifact listed under `[Unreleased]` carries the new release version before tagging. In this skill system: `grep -E "^version:" */SKILL.md` and cross-check against the `[Unreleased]` entries — any skill changed there still showing an older version is a finding.
+
+### Step 6: Produce the checklist and surface to PO
 
 Present in a `## DECISIONS NEEDED` block per `_shared/orchestration.md` §"Decision Prompts":
 
@@ -58,6 +62,7 @@ Present in a `## DECISIONS NEEDED` block per `_shared/orchestration.md` §"Decis
     | In-flight verification agents | <count> | <agent IDs + what they verify> |
     | Open PRs targeting release branch | <count> | <PR numbers> |
     | Last security scan | <green/red/N/A> | <link or commit> |
+    | Version/changelog consistency | <consistent/drift/N/A> | <artifacts still on old version> |
 
     ## DECISIONS NEEDED
 
@@ -69,7 +74,7 @@ Present in a `## DECISIONS NEEDED` block per `_shared/orchestration.md` §"Decis
          - Hold — clear the open items first
          - Defer specific items — waive specific beads with reasoning
 
-### Step 6: Refuse to fire release-execution without explicit confirmation
+### Step 7: Refuse to fire release-execution without explicit confirmation
 
 If the PO answers "proceed," "go," or explicitly waives the open items, fire the release-execution agent. If the PO replies with a catch-all that doesn't address the checklist ("ship it," "let's go"), do NOT fire — per `_shared/orchestration.md` §"Authorization Verbs," re-surface the checklist with a 1-line clarification.
 
