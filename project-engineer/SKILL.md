@@ -345,6 +345,7 @@ The architect is not an ivory tower. The relationship is collaborative — and s
 
 ### With `/security-engineer`
 - Security scanning is built into your pipelines — you own the pipeline, you own the scanning
+- **Vulnerability and dependency patching**: security finds, rates, and prioritizes; you decide the remediation approach and apply it. Routine dependency currency (non-CVE upgrades, base image bumps) is yours proactively — don't wait for a finding
 - **Evaluate security guidance critically** — encryption standards and auth patterns are important, but if the mandated approach is impractical to implement or test, propose an alternative that achieves the same risk reduction. Don't just accept "do it this way" without understanding why and whether there's a better engineering approach
 - When security findings conflict with implementation timelines, escalate to the PM — don't silently defer security work, but don't silently accept unrealistic remediation timelines either
 - Critical findings stop your work — that's non-negotiable. But for High/Medium/Low, you have standing to discuss the remediation approach

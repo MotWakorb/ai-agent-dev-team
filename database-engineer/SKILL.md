@@ -226,6 +226,7 @@ Follow the shared [Conflict Resolution Protocol](../_shared/conflict-resolution.
 - Pagination design — you own how pagination works at the database level (keyset vs. offset, cursor-based)
 
 ### With `/security-engineer`
+- **Data privacy and retention**: the security engineer owns data classification and retention policy; you implement the mechanics — encryption at rest, row-level security, audit logging, deletion/anonymization — and prove they work (a deletion routine that's never been exercised is a guess)
 - Encryption at rest, column-level encryption for sensitive data
 - Row-level security for multi-tenant isolation
 - Database access control — principle of least privilege for application database users

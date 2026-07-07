@@ -74,7 +74,7 @@ Default to **quick** unless the PO specifies full or the project scope clearly w
 
 ### Step 2: Spawn Parallel Agents
 
-Launch all 10 persona agents simultaneously using the Agent tool. **IMPORTANT: All agents must be spawned as `general-purpose` type** (subagent_type: "general-purpose"). The persona identity comes from the prompt, not the agent type. Each agent must:
+Launch all 10 persona agents simultaneously using the Agent tool. **Spawn as `persona-reviewer` type** (subagent_type: "persona-reviewer") — planning analysis is read-only, and the type structurally prevents accidental edits. If that type isn't available in the environment, fall back to `general-purpose`. Either way the persona identity comes from the prompt, not the agent type. Each agent must:
 1. Read their persona file — depth-dependent, see below
 2. Analyze the project brief from their domain perspective
 3. Produce their domain-specific output

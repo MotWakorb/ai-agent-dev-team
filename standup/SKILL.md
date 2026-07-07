@@ -54,7 +54,7 @@ If no beads database exists, skip to Step 1 and work from conversation context.
 
 ### Step 1: Phase 1 — Lightweight Triage (All 10 Voices)
 
-Launch all 10 persona agents simultaneously using the Agent tool. **IMPORTANT: All agents must be spawned as `general-purpose` type** (subagent_type: "general-purpose"). Each agent loads ONLY their identity file — not the full persona. This is a triage, not a deep dive:
+Launch all 10 persona agents simultaneously using the Agent tool. **Spawn as `persona-reviewer` type** (subagent_type: "persona-reviewer") — status triage is read-only. Fall back to `general-purpose` if the type isn't available. Each agent loads ONLY their identity file — not the full persona. This is a triage, not a deep dive:
 
 **Each agent prompt:**
 ```

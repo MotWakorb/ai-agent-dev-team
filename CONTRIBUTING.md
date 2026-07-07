@@ -104,6 +104,10 @@ Ceremonies live in their own directories with a single `SKILL.md`. They orchestr
 - Define clear output format and success criteria
 - Test with the relevant personas to make sure prompts produce useful output
 
+## Agent Definitions
+
+`agents/` holds custom subagent types installed to `~/.claude/agents/` by install.sh — e.g., `persona-reviewer`, the read-only dispatch target for personas in review/analysis mode. These are Claude Code agent definitions: YAML frontmatter (`name`, `description`, `tools`, `model`) plus a short system prompt. Keep them thin — persona identity comes from the dispatch prompt, not the agent definition, so each persona keeps a single source of truth in its SKILL.md.
+
 ## Modifying Shared Foundations
 
 Changes to `_shared/conflict-resolution.md` or `_shared/engineering-discipline.md` affect every persona. Be deliberate — these are the rules of engagement for the whole team.

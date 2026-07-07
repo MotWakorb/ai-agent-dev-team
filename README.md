@@ -324,7 +324,7 @@ When Things Break
 
 ## How the Team Interacts
 
-The significant persona relationships are documented in each persona's "Relationship to Other Personas" section (7 of 10 personas carry one today; coverage of the remaining pairs is tracked as backlog). Each persona knows:
+Every persona carries a "Relationship to Other Personas" section documenting its side of each significant relationship — its own obligations and expectations, not a restatement of the other side's. The two sides of a relationship are complementary by design (the engineer's "argue a Block with technical reasoning" pairs with the reviewer's "welcome pushback and evaluate it"). Each persona knows:
 - What they own (domain authority)
 - What other personas own (where to defer)
 - Where they'll naturally disagree (professional bias)

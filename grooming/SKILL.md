@@ -79,7 +79,7 @@ Items that don't pass the value gate don't get refined. Refining work that shoul
 
 ### Step 2: Spawn Parallel Agents — One Per Persona, All Items at Once
 
-Spawn all 10 personas in parallel using the Agent tool, each evaluating **ALL items in a single pass**. This is batch mode — each persona is spawned once regardless of how many items are being groomed. **IMPORTANT: All agents must be spawned as `general-purpose` type** (subagent_type: "general-purpose").
+Spawn all 10 personas in parallel using the Agent tool, each evaluating **ALL items in a single pass**. This is batch mode — each persona is spawned once regardless of how many items are being groomed. **Spawn as `persona-reviewer` type** (subagent_type: "persona-reviewer") — grooming evaluation is read-only; bead updates happen at the orchestrator level in Step 4. Fall back to `general-purpose` if the type isn't available.
 
 **Default to identity.md, not SKILL.md.** Readiness checks, S/M/L sizing, and acceptance-criteria drafting are pattern-matching — identity.md carries the domain authority and biases this needs at a fraction of the context load per agent. Use the full SKILL.md read (**deep-groom**) only when the PO requests it or a specific bead is flagged complex or high-risk during the value gate — and then only for the personas whose domain the complexity lives in.
 
