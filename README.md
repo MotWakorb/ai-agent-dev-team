@@ -18,7 +18,31 @@ cd claude-agent-dev-team
 ./install.ps1
 ```
 
-Updates are just `git pull` — symlinks pick up changes automatically. If upgrading from a version before orchestration discipline was added, re-run the installer to set up `~/.claude/CLAUDE.md`.
+Updates are just `git pull` — symlinks pick up changes automatically. If upgrading from a version before orchestration discipline was added, re-run the installer to set up `~/.claude/CLAUDE.md` and the enforcement hook.
+
+The installer also registers a PreToolUse hook in `~/.claude/settings.json` (`hooks/pretooluse.py`) that converts the mechanically decidable orchestration rules from prose to guarantees — see [Enforcement Hooks](#enforcement-hooks). Windows: the hook is not yet wired into `install.ps1`.
+
+### Project-Scoped Install
+
+If you don't want the team in your entire Claude workflow, install it into a single project instead:
+
+```bash
+./install.sh --project /path/to/your/project
+```
+
+Everything lands under that project — skills in `.claude/skills/`, the `persona-reviewer` agent in `.claude/agents/`, the enforcement hook in `.claude/hooks/` + `.claude/settings.json`, and the orchestration block in the project's `CLAUDE.md`. Claude Code picks all of it up only in that project; the rest of your workflow is untouched.
+
+Project installs are copies, not symlinks, so they're self-contained: commit `.claude/` and `CLAUDE.md` and every teammate who clones the project gets the whole team with zero setup. The hook command uses `$CLAUDE_PROJECT_DIR`, so nothing user-specific is baked in. After a `git pull` in this repo, re-run the installer to update the copies.
+
+For a personal install that stays out of the project's git history, add `--local` — the hook registers in `.claude/settings.local.json` and the installer prints the `.gitignore` lines to add. Uninstall with `./uninstall.sh --project /path/to/your/project`.
+
+One global exception either way: `/retro` writes to `~/retros`, so retrospectives span projects.
+
+### Recommended: beads
+
+The team works best with [beads](https://github.com/steveyegge/beads) (`bd`) as its work board. Every ceremony assumes it by default: `/team-plan` files epics and beads, `/grooming` refines them, `/standup` reads them, `/release-check` gates on them, and the PM tracks risk through them. Without beads the skills still run — they fall back to conversation context — but nothing persists between sessions, which defeats much of the point of a standing team.
+
+Install beads, then run `bd init` in each project alongside `/onboard`. If you use a different tracker (Jira, Linear, GitHub Issues), swap the board tool in `project-manager/SKILL.md` — see [Customization](#customization).
 
 ## Why
 
@@ -57,6 +81,8 @@ cd /path/to/your/project
 #   - Proposes a deployment tier per component with observed signals
 #   - You confirm or override
 #   - Writes COMPONENTS.md at the repo root
+#   - Offers to write a project CLAUDE.md block (gates, branching, board,
+#     deploy — the per-project facts personas need every session)
 
 # 3. Now the team ceremonies work
 # In Claude Code: /team-plan, /grooming, /standup, /team-review, /spike, /postmortem
@@ -125,8 +151,9 @@ Single-purpose orchestrator skills that guard a specific operational concern. Th
 |------|---------|
 | `_shared/conflict-resolution.md` | How personas disagree and resolve conflicts. Domain authority, escalation to PO, disagree-and-commit protocol. Critical security findings are non-negotiable |
 | `_shared/engineering-discipline.md` | Evidence over intuition. Verify before asserting. Completeness over sampling. Known failure modes. Naming discipline. One-way door protocol |
-| `_shared/orchestration.md` | Orchestrator discipline — how Claude dispatches agents, isolates worktrees, picks models per task, compresses decisions, and avoids merging past in-flight verification. Auto-loaded via `~/.claude/CLAUDE.md` |
+| `_shared/orchestration.md` | Orchestrator discipline — how Claude dispatches agents, isolates worktrees, picks models per task, compresses decisions, and avoids merging past in-flight verification. Auto-loaded via `~/.claude/CLAUDE.md` (or the project's `CLAUDE.md` for project-scoped installs) |
 | `_shared/deployment-tier.md` | Tier definitions (home-lab / small-team / startup / enterprise) and per-persona calibration tables. Personas read this to right-size their recommendations to the deployment context |
+| `_shared/claude-md-project-template.md` | Template for the project `CLAUDE.md` block `/onboard` offers to write — the per-project facts (board, gates, branching, deploy) personas need every session |
 | `*/identity.md` | Condensed identity tier for each persona — used by two-phase standup, quick-mode `/team-plan` and `/team-review`, default `/grooming`, and lightweight triage. Domain authority, professional biases, and standup triggers in ~15 lines |
 
 ## Key Design Decisions
@@ -176,15 +203,30 @@ Front-loading known LLM failure modes into each persona produces significantly b
 ### The PO Has Final Say (With One Exception)
 The Product Owner makes all product and priority decisions. The one exception: Critical security findings are non-negotiable — no one overrides them, not even the PO.
 
+### Enforcement Hooks
+
+Prompt-level rules (CLAUDE.md, SKILL.md) are advisory — they lose to context drift, compaction, and "it's just a 1-line edit" rationalizations. `hooks/pretooluse.py`, registered by install.sh, enforces the mechanically decidable rules deterministically, and its deny messages act as just-in-time reminders at the exact moment of violation:
+
+| Rule | Trigger | Effect |
+|------|---------|--------|
+| **Orchestrator edit block** | Main agent calls Edit/Write/NotebookEdit on a project file in an onboarded project (`COMPONENTS.md` present) | Denied — dispatch the owning persona. `COMPONENTS.md`, `CLAUDE.md`, `.claude/` config, and files outside the project tree stay writable (orchestrator territory) |
+| **Ceremony gate** | A team ceremony (`/team-plan`, `/grooming`, `/standup`, `/spike`, `/team-review`, `/postmortem`) invoked without `COMPONENTS.md` | Denied — run `/onboard` first. The prose "refuses to run" is now a guarantee |
+| **Persona bead firewall** | A subagent runs `bd create/close/delete/reopen` | Denied — board state transitions are orchestrator territory; findings are reported, the PO decides. `bd update` stays allowed |
+| **Bead-referenced commits** | `git commit -m` without a bead id in a repo with `.beads/` | Denied — include the bead id, or the literal `[no-bead]` for genuinely untracked commits |
+
+The hook distinguishes orchestrator from subagent via the `agent_id` field in hook input (present only for subagents). Semantic rules — merge authorization, definition of done, backlog sign-off — can't be mechanically decided and stay in `_shared/orchestration.md`. This repo itself is exempt (meta-work on the skill system is direct-edit territory). Self-check: `python3 hooks/pretooluse.py --check`.
+
 ## Install Options
 
 > **Windows note:** Creating symlinks may require running as Administrator or enabling Developer Mode (Settings > Update & Security > For developers).
 
 **Bash:**
 ```bash
-./install.sh            # Symlink (default) — git pull updates automatically
-./install.sh --copy     # Copy instead — for customization without affecting the repo
-./install.sh --help     # Show options
+./install.sh                        # Symlink (default) — git pull updates automatically
+./install.sh --copy                 # Copy instead — for customization without affecting the repo
+./install.sh --project <dir>        # Project-scoped install into <dir>/.claude (copies, committable)
+./install.sh --project <dir> --local  # Project-scoped, personal (settings.local.json, gitignored)
+./install.sh --help                 # Show options
 ```
 
 **PowerShell:**
@@ -193,10 +235,13 @@ The Product Owner makes all product and priority decisions. The one exception: C
 ./install.ps1 -Copy      # Copy instead
 ```
 
+> **Windows gap:** `install.ps1` does not yet register the enforcement hook, install the `persona-reviewer` agent definition, or support `--project`. Skills and the CLAUDE.md orchestration block install fine.
+
 **Uninstall:**
 ```bash
-./uninstall.sh           # macOS/Linux
-./uninstall.ps1          # Windows
+./uninstall.sh                    # macOS/Linux (global)
+./uninstall.sh --project <dir>    # Remove a project-scoped install
+./uninstall.ps1                   # Windows
 ```
 
 ### Manual Install
@@ -487,6 +532,7 @@ Follow the pattern established by existing personas:
 ```
 claude-agent-dev-team/
 ├── _shared/
+│   ├── claude-md-project-template.md # Project CLAUDE.md block template (written by /onboard)
 │   ├── conflict-resolution.md       # Conflict resolution protocol
 │   ├── decision-prompts.md          # DECISIONS NEEDED block format reference
 │   ├── deployment-tier.md           # Tier definitions + per-persona calibration tables
@@ -494,6 +540,8 @@ claude-agent-dev-team/
 │   └── orchestration.md            # Orchestrator discipline (agent dispatch, isolation, model selection, decisions)
 ├── agents/
 │   └── persona-reviewer.md          # Read-only agent type for review-mode dispatch (no Edit/Write) — installed to ~/.claude/agents/
+├── hooks/
+│   └── pretooluse.py                # PreToolUse enforcement dispatcher (see Enforcement Hooks) — registered in settings.json by install.sh
 ├── security-engineer/
 │   ├── SKILL.md                     # Full persona — Security Engineer (protector)
 │   └── identity.md                  # Condensed identity for triage
@@ -531,6 +579,7 @@ claude-agent-dev-team/
 ├── spike/SKILL.md                   # Technical spike ceremony
 ├── postmortem/SKILL.md              # Incident postmortem ceremony
 ├── onboard/SKILL.md                 # Project onboarding ceremony
+├── release-check/SKILL.md           # Pre-release semantic readiness gate
 ├── retro/SKILL.md                   # Session retrospective ceremony
 ├── install.sh                       # Installer script (macOS/Linux)
 ├── install.ps1                      # Installer script (Windows)

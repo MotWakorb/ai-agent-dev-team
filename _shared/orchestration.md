@@ -10,6 +10,8 @@ Skills define each persona's scope. The orchestrator identifies which persona ow
 
 The value of the persona firewall is consistency, not efficiency per change. A small exception becomes precedent for a larger one.
 
+The mechanically decidable subset of these rules is also hook-enforced (`hooks/pretooluse.py`, registered by install.sh): orchestrator file edits in onboarded projects, ceremonies without `COMPONENTS.md`, subagent bead state transitions, and unreferenced commits in beads repos are denied at the tool-call layer. A hook denial citing these rules is authoritative — dispatch instead of working around it (e.g., via Bash file writes, which the hook cannot see).
+
 ### What the orchestrator does
 
 Read the board, identify owners, brief agents, synthesize results, frame decisions for the PO, broker cross-domain context. State transitions on the board, hook/settings config, and the orchestrator-shaping config files (this doc and its siblings in `_shared/`, the project's `CLAUDE.md`) are also orchestrator territory — no skill claims them.

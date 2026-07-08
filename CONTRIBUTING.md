@@ -106,7 +106,16 @@ Ceremonies live in their own directories with a single `SKILL.md`. They orchestr
 
 ## Agent Definitions
 
-`agents/` holds custom subagent types installed to `~/.claude/agents/` by install.sh — e.g., `persona-reviewer`, the read-only dispatch target for personas in review/analysis mode. These are Claude Code agent definitions: YAML frontmatter (`name`, `description`, `tools`, `model`) plus a short system prompt. Keep them thin — persona identity comes from the dispatch prompt, not the agent definition, so each persona keeps a single source of truth in its SKILL.md.
+`agents/` holds custom subagent types installed to `~/.claude/agents/` (or `<project>/.claude/agents/` for `--project` installs) by install.sh — e.g., `persona-reviewer`, the read-only dispatch target for personas in review/analysis mode. These are Claude Code agent definitions: YAML frontmatter (`name`, `description`, `tools`, `model`) plus a short system prompt. Keep them thin — persona identity comes from the dispatch prompt, not the agent definition, so each persona keeps a single source of truth in its SKILL.md.
+
+## Enforcement Hooks
+
+`hooks/pretooluse.py` is the PreToolUse dispatcher install.sh registers in settings.json. It enforces only mechanically decidable rules (orchestrator edit block, ceremony gate, persona bead firewall, bead-referenced commits) — judgment calls stay in `_shared/orchestration.md` as prose. Two rules for changes:
+
+- **Run the self-check after any edit**: `python3 hooks/pretooluse.py --check`. Add an assertion for every new rule or exemption — the check is the only automated verification the hook gets.
+- **Fail open.** The hook must never block on its own bugs — malformed input, missing fields, and unrecognized tools all return silently. A broken enforcement hook that denies everything is worse than no hook.
+
+Stdlib-only Python 3; no dependencies. Project-scoped installs get a copy at `.claude/hooks/pretooluse.py`, so hook changes reach project installs only when the installer is re-run.
 
 ## Modifying Shared Foundations
 

@@ -434,6 +434,8 @@ See `_shared/deployment-tier.md` for what each tier expects from each persona.
 
 If the PO declines to commit to tiers right now, the onboarding still produces the baseline assessment, but every other team skill will refuse to run until `COMPONENTS.md` exists. Make this trade-off visible: "Without `COMPONENTS.md`, personas will default to enterprise rigor across the board, which is the failure mode this system is designed to prevent."
 
+**3e. Offer to write the project `CLAUDE.md` block** from `_shared/claude-md-project-template.md`. Fill the slots from what onboarding observed — gates from the project engineer's assessment, branching from CONTRIBUTING.md (technical writer), board from whether beads is initialized, deploy from the SRE/architect findings. Present the filled block to the PO before writing. Append inside the managed markers; never touch content outside them — re-onboarding replaces only the block.
+
 ### Step 4: Produce the Baseline Assessment
 
 Synthesize all 10 agent assessments into a unified onboarding report.

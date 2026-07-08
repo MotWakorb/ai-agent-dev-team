@@ -43,6 +43,7 @@ $Skills = @(
     'spike'
     'postmortem'
     'onboard'
+    'release-check'
 )
 
 function Test-Symlink {

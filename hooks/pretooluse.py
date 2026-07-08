@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""PreToolUse enforcement dispatcher for the Claude Agent Dev Team.
+
+Registered in ~/.claude/settings.json by install.sh (matcher:
+Edit|Write|NotebookEdit|Bash|Skill). Converts the mechanically decidable
+orchestration rules from prose to guarantees:
+
+  A. Orchestrator edit block — in onboarded projects (COMPONENTS.md present),
+     the main agent may not Edit/Write project files; personas implement.
+  1. Ceremony gate — team ceremonies deny without COMPONENTS.md (run /onboard).
+  2. Persona bead firewall — subagents may not create/close/delete/reopen
+     beads; board state transitions are orchestrator territory.
+  3. Bead-referenced commits — in repos with .beads/, `git commit -m` must
+     reference a bead id (escape hatch: literal [no-bead]).
+
+Semantic rules (merge authorization, definition of done, backlog sign-off)
+stay in _shared/orchestration.md — they are not mechanically decidable.
+
+Self-check after edits: python3 pretooluse.py --check
+"""
+import json
+import os
+import re
+import sys
+
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CEREMONIES = {"team-plan", "team-review", "grooming", "standup", "spike", "postmortem"}
+# Orchestrator territory per orchestration.md: COMPONENTS.md, the project
+# CLAUDE.md block, hook/settings config. Everything else is persona work.
+ORCH_WRITABLE_BASENAMES = {"COMPONENTS.md", "CLAUDE.md"}
+
+
+def deny(reason):
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason,
+    }}))
+    sys.exit(0)
+
+
+def git_root(path):
+    path = os.path.realpath(path)
+    while path != os.path.dirname(path):
+        if os.path.isdir(os.path.join(path, ".git")):
+            return path
+        path = os.path.dirname(path)
+    return None
+
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return  # malformed input: never block on our own bug
+
+    tool = data.get("tool_name") or ""
+    tool_input = data.get("tool_input") or {}
+    cwd = data.get("cwd") or os.getcwd()
+    agent_id = data.get("agent_id")  # absent => main agent (orchestrator)
+    agent_type = data.get("agent_type") or ""
+
+    root = git_root(cwd) or os.path.realpath(cwd)
+    if root == os.path.realpath(REPO_DIR):
+        return  # meta-work exception: this repo governs itself, direct edits are fine
+
+    onboarded = os.path.isfile(os.path.join(root, "COMPONENTS.md"))
+    uses_beads = os.path.isdir(os.path.join(root, ".beads"))
+
+    # Rule 1: ceremony gate
+    if tool == "Skill":
+        skill = (tool_input.get("skill") or "").split(":")[-1]
+        if skill in CEREMONIES and not onboarded:
+            deny(f"/{skill} requires COMPONENTS.md at the repo root — without it, "
+                 "personas default to enterprise rigor. Run /onboard first.")
+        return
+
+    # Rule A: orchestrator edit block
+    if agent_id is None and tool in ("Edit", "Write", "NotebookEdit"):
+        if not onboarded:
+            return
+        path = os.path.realpath(tool_input.get("file_path")
+                                or tool_input.get("notebook_path") or "")
+        if not path.startswith(root + os.sep):
+            return  # scratchpad, retros, ~/.claude — outside the project tree
+        if os.path.basename(path) in ORCH_WRITABLE_BASENAMES:
+            return
+        if f"{os.sep}.claude{os.sep}" in path:
+            return  # hook/settings config is orchestrator territory
+        deny("Orchestrator edit blocked: this is an onboarded team project — "
+             "personas implement, the orchestrator dispatches. Identify the "
+             "owning persona (project-engineer for code, technical-writer for "
+             "docs, database-engineer for schema) and dispatch with a brief. "
+             "See ~/.claude/skills/_shared/orchestration.md.")
+
+    if tool == "Bash":
+        cmd = tool_input.get("command") or ""
+
+        # Rule 2: persona bead firewall (beads:* agent types manage their own tasks)
+        if agent_id is not None and not agent_type.startswith("beads:"):
+            if re.search(r"\bbd\s+(create|close|delete|reopen)\b", cmd):
+                deny("Board state transitions are orchestrator territory. "
+                     "Report this as a finding in your response — the "
+                     "orchestrator surfaces it to the PO, who decides whether "
+                     "to file or close a bead. (bd update on beads you own is "
+                     "allowed.)")
+
+        # Rule 3: bead-referenced commits
+        if (uses_beads
+                and re.search(r"\bgit\s+commit\b", cmd)
+                and re.search(r"(^|\s)(-[a-zA-Z]*m|--message)\b", cmd)
+                and "[no-bead]" not in cmd
+                and not re.search(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b", cmd)):
+            deny("This repo uses beads: commit messages must reference a bead "
+                 "id (e.g. proj-42). If this commit genuinely has no bead, "
+                 "include the literal token [no-bead].")
+
+
+def _self_check():
+    import subprocess
+    import tempfile
+
+    def run(payload, setup=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, ".git"))
+            if setup:
+                setup(tmp)
+            payload = json.loads(json.dumps(payload).replace("<root>", tmp))
+            payload.setdefault("cwd", tmp)
+            proc = subprocess.run(
+                [sys.executable, os.path.abspath(__file__)],
+                input=json.dumps(payload), capture_output=True, text=True)
+            return "deny" in proc.stdout
+
+    def onboarded(tmp):
+        open(os.path.join(tmp, "COMPONENTS.md"), "w").close()
+
+    def beaded(tmp):
+        onboarded(tmp)
+        os.makedirs(os.path.join(tmp, ".beads"))
+
+    # Rule 1: ceremony denied without COMPONENTS.md, allowed with; retro exempt
+    assert run({"tool_name": "Skill", "tool_input": {"skill": "team-plan"}})
+    assert not run({"tool_name": "Skill", "tool_input": {"skill": "team-plan"}}, onboarded)
+    assert not run({"tool_name": "Skill", "tool_input": {"skill": "retro"}})
+    # Rule A: orchestrator edit denied in onboarded project; subagent, COMPONENTS.md,
+    # out-of-tree, and non-onboarded all allowed
+    edit = {"tool_name": "Edit", "tool_input": {"file_path": "<root>/src/app.py"}}
+    assert run(edit, onboarded)
+    assert not run(edit)
+    assert not run(dict(edit, agent_id="a1"), onboarded)
+    assert not run({"tool_name": "Write", "tool_input": {"file_path": "<root>/COMPONENTS.md"}}, onboarded)
+    assert not run({"tool_name": "Write", "tool_input": {"file_path": "/somewhere/else/notes.md"}}, onboarded)
+    # Rule 2: subagent bd create denied; orchestrator, beads:*, and bd update allowed
+    bd = {"tool_name": "Bash", "tool_input": {"command": "bd create 'thing'"}}
+    assert run(dict(bd, agent_id="a1"))
+    assert not run(bd)
+    assert not run(dict(bd, agent_id="a1", agent_type="beads:task-agent"))
+    assert not run({"tool_name": "Bash", "tool_input": {"command": "bd update x-1 --notes hi"}, "agent_id": "a1"})
+    # Rule 3: commit without bead id denied in beads repo; id, [no-bead], no .beads allowed
+    ci = {"tool_name": "Bash", "tool_input": {"command": 'git commit -m "fix the thing"'}}
+    assert run(ci, beaded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "proj-42: fix"'}}, beaded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "chore [no-bead]"'}}, beaded)
+    assert not run(ci, onboarded)
+    print("all checks passed")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--check":
+        _self_check()
+    else:
+        main()

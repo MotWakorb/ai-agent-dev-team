@@ -2,33 +2,93 @@
 set -euo pipefail
 
 # Claude Agent Dev Team — Installer
-# Symlinks skills into ~/.claude/skills/ so git pull updates automatically
-# Use --copy to copy instead of symlink (for customization)
+# Default: symlinks skills into ~/.claude/skills/ so git pull updates automatically
+# --copy: copy instead of symlink (for customization)
+# --project <dir>: install into <dir>/.claude instead of ~/.claude (forces copy mode)
+# --local: with --project, register the hook in settings.local.json (personal, not committed)
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILLS_DIR="${HOME}/.claude/skills"
-AGENTS_DIR="${HOME}/.claude/agents"
-RETRO_DIR="${HOME}/retros"
 MODE="symlink"
+PROJECT_DIR=""
+LOCAL_SETTINGS=0
 
-# Parse flags
-for arg in "$@"; do
-  case $arg in
+usage() {
+  echo "Usage: ./install.sh [OPTIONS]"
+  echo ""
+  echo "Options:"
+  echo "  (default)        Symlink skills into ~/.claude/skills/ (git pull updates automatically)"
+  echo "  --copy           Copy skills instead of symlink (for customization)"
+  echo "  --project <dir>  Install into <dir>/.claude instead of ~/.claude — the team is"
+  echo "                   available only in that project. Forces copy mode so the install"
+  echo "                   is self-contained and committable (teammates get it via git)."
+  echo "  --local          With --project: register the enforcement hook in"
+  echo "                   settings.local.json instead of settings.json (personal install;"
+  echo "                   gitignore .claude/skills, .claude/agents, .claude/hooks too)"
+  echo "  --help           Show this help"
+}
+
+while [ $# -gt 0 ]; do
+  case $1 in
     --copy)
       MODE="copy"
+      ;;
+    --project)
       shift
+      [ $# -gt 0 ] || { echo "ERROR: --project requires a path" >&2; exit 1; }
+      PROJECT_DIR="$1"
+      ;;
+    --local)
+      LOCAL_SETTINGS=1
       ;;
     --help|-h)
-      echo "Usage: ./install.sh [OPTIONS]"
-      echo ""
-      echo "Options:"
-      echo "  (default)    Symlink skills into ~/.claude/skills/ (git pull updates automatically)"
-      echo "  --copy       Copy skills instead of symlink (for customization)"
-      echo "  --help       Show this help"
+      usage
       exit 0
       ;;
+    *)
+      echo "ERROR: unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
   esac
+  shift
 done
+
+if [ "$LOCAL_SETTINGS" -eq 1 ] && [ -z "$PROJECT_DIR" ]; then
+  echo "ERROR: --local only applies to project installs (use with --project)" >&2
+  exit 1
+fi
+
+if [ -n "$PROJECT_DIR" ]; then
+  [ -d "$PROJECT_DIR" ] || { echo "ERROR: ${PROJECT_DIR} is not a directory" >&2; exit 1; }
+  PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+  if [ "$PROJECT_DIR" = "$REPO_DIR" ]; then
+    echo "ERROR: --project target is this repo itself — point it at the project that should get the team" >&2
+    exit 1
+  fi
+  # Symlinks into a personal clone break for anyone else who clones the project
+  MODE="copy"
+  CLAUDE_ROOT="${PROJECT_DIR}/.claude"
+  CLAUDE_MD="${PROJECT_DIR}/CLAUDE.md"
+  ORCH_PATH=".claude/skills/_shared/orchestration.md"
+  # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook time, so the
+  # committed settings entry has no user-specific absolute path in it
+  HOOK_CMD='python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse.py"'
+  if [ "$LOCAL_SETTINGS" -eq 1 ]; then
+    SETTINGS_JSON="${CLAUDE_ROOT}/settings.local.json"
+  else
+    SETTINGS_JSON="${CLAUDE_ROOT}/settings.json"
+  fi
+else
+  CLAUDE_ROOT="${HOME}/.claude"
+  CLAUDE_MD="${CLAUDE_ROOT}/CLAUDE.md"
+  ORCH_PATH="~/.claude/skills/_shared/orchestration.md"
+  HOOK_CMD="python3 \"${REPO_DIR}/hooks/pretooluse.py\""
+  SETTINGS_JSON="${CLAUDE_ROOT}/settings.json"
+fi
+
+SKILLS_DIR="${CLAUDE_ROOT}/skills"
+AGENTS_DIR="${CLAUDE_ROOT}/agents"
+RETRO_DIR="${HOME}/retros"
 
 # All skill directories (order doesn't matter)
 SKILLS=(
@@ -63,7 +123,7 @@ echo ""
 # Create skills directory if it doesn't exist
 mkdir -p "$SKILLS_DIR"
 
-# Create retro directory
+# Create retro directory (the retro skill writes to ~/retros regardless of install scope)
 mkdir -p "$RETRO_DIR"
 
 # Track results
@@ -85,12 +145,12 @@ for skill in "${SKILLS[@]}"; do
   if [ -L "$target" ]; then
     # Existing symlink — check if it points to us
     existing="$(readlink "$target")"
-    if [ "$existing" = "$source" ]; then
+    if [ "$MODE" = "symlink" ] && [ "$existing" = "$source" ]; then
       echo "  OK:   ${skill} (already linked)"
       skipped=$((skipped + 1))
       continue
     else
-      echo "  UPDATE: ${skill} (repointing symlink)"
+      echo "  UPDATE: ${skill} (replacing symlink)"
       rm "$target"
       updated=$((updated + 1))
     fi
@@ -145,15 +205,21 @@ done
 
 echo ""
 
-# --- Manage ~/.claude/CLAUDE.md orchestration block ---
-CLAUDE_MD="${HOME}/.claude/CLAUDE.md"
+# --- Hook script (project installs get their own copy; global runs from the repo) ---
+if [ -n "$PROJECT_DIR" ]; then
+  mkdir -p "${CLAUDE_ROOT}/hooks"
+  cp "${REPO_DIR}/hooks/pretooluse.py" "${CLAUDE_ROOT}/hooks/pretooluse.py"
+  echo "  COPY: hooks/pretooluse.py"
+fi
+
+# --- Manage orchestration block in CLAUDE.md ---
 MARKER_START="# --- Claude Agent Dev Team (managed) ---"
 MARKER_END="# --- End Claude Agent Dev Team ---"
 
 BLOCK="${MARKER_START}
 # Orchestration discipline — read before spawning agents or doing implementation work.
 # This file is managed by install.sh. To update, re-run the installer.
-Read ~/.claude/skills/_shared/orchestration.md before spawning any agent or doing any implementation work.
+Read ${ORCH_PATH} before spawning any agent or doing any implementation work.
 ${MARKER_END}"
 
 if [ -f "$CLAUDE_MD" ] && grep -qF "$MARKER_START" "$CLAUDE_MD"; then
@@ -177,6 +243,31 @@ if grep -qF "$MARKER_START" "$CLAUDE_MD"; then
   echo "  CLAUDE.md: orchestration block in ${CLAUDE_MD}"
 fi
 
+# --- Register PreToolUse enforcement hook ---
+python3 - "$SETTINGS_JSON" "$HOOK_CMD" <<'PY'
+import json, os, sys
+
+path, cmd = sys.argv[1], sys.argv[2]
+settings = {}
+if os.path.isfile(path):
+    with open(path) as f:
+        settings = json.load(f)
+
+entries = settings.setdefault("hooks", {}).setdefault("PreToolUse", [])
+# Idempotent: drop any prior registration of our dispatcher, then re-add
+entries[:] = [e for e in entries if "pretooluse.py" not in json.dumps(e)]
+entries.append({
+    "matcher": "Edit|Write|NotebookEdit|Bash|Skill",
+    "hooks": [{"type": "command", "command": cmd}],
+})
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    json.dump(settings, f, indent=2)
+    f.write("\n")
+print(f"  settings: PreToolUse enforcement hook in {path}")
+PY
+
 echo ""
 echo "Done!"
 echo "  Installed: ${installed}"
@@ -185,7 +276,21 @@ echo "  Skipped:   ${skipped}"
 echo "  Retro dir: ${RETRO_DIR}"
 echo ""
 
-if [ "$MODE" = "symlink" ]; then
+if [ -n "$PROJECT_DIR" ]; then
+  echo "Project-scoped install: the team is available only in ${PROJECT_DIR}."
+  echo "Files are copies — after 'git pull' in this repo, re-run:"
+  echo "  ./install.sh --project ${PROJECT_DIR}$([ "$LOCAL_SETTINGS" -eq 1 ] && echo " --local")"
+  if [ "$LOCAL_SETTINGS" -eq 1 ]; then
+    echo ""
+    echo "Personal install (--local): add these to the project's .gitignore:"
+    echo "  .claude/skills/"
+    echo "  .claude/agents/"
+    echo "  .claude/hooks/"
+    echo "  .claude/settings.local.json"
+  else
+    echo "Commit .claude/ and CLAUDE.md to share the team with everyone who clones the project."
+  fi
+elif [ "$MODE" = "symlink" ]; then
   echo "Skills are symlinked — run 'git pull' in this repo to update them."
   echo "To customize a skill without affecting the repo, copy it manually:"
   echo "  cp -R ${SKILLS_DIR}/<skill> ${SKILLS_DIR}/<skill>-custom"

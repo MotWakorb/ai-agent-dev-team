@@ -41,6 +41,7 @@ $Skills = @(
     'spike'
     'postmortem'
     'onboard'
+    'release-check'
 )
 
 # Check if anything is installed
