@@ -41,6 +41,7 @@ Past violations all arrived with a justification. The justifications are precede
 - "The engineer will need this anyway" → dispatch
 - "It's just a bead note" → dispatch
 - "Just cleaning up after the engineer's report" → new dispatch
+- "It's just a dep bump" / "it's just CSS polish" → dispatch. Size is not an exemption category; both of these produced PO corrections in the field
 
 ### Mid-task drift
 
@@ -203,6 +204,16 @@ If the orchestrator has flagged a decision in the immediately-prior message and 
 
 If unsure which case applies, the 1-line clarification is always safe and costs nothing.
 
+### Open decisions block dependent dispatch
+
+"Queued pending a PO decision" means *nothing runs* — not "runs on a guess." No agent may be dispatched against a path whose a/b/c decision is still open, and a design-fork question the orchestrator itself flagged blocks the build steps that depend on it until answered. Work that is genuinely independent of the open decision may proceed; the dependent path may not. A later catch-all ("go," "do the rest") does not silently resolve the fork — re-surface it.
+
+### Irreversible follow-on actions state their authorization inline
+
+When a decision option implies a later irreversible action (merge, deploy, delete, publish), the option text states that action's authorization status inline: "(a) polish, then I merge" is a different option than "(a) polish, then hold for your merge call." An unanswered decision block must never convert to consent via momentum — the field incident this rule comes from was a merge executed off "Polish before merge" plus subsequent unrelated messages. The mechanical backstop is the merge ask-gate (installer-managed `ask` permission on merge-shaped commands); this rule is the prose half.
+
+Irreversibility also raises the diligence bar: before a one-way, outward-facing action (public publishing, external-system writes), review is enumerative — every item, every category — or the PO explicitly signs off on sampling. Grep-level spot checks are for reversible actions.
+
 ## Findings From Personas Are Notes, Not Beads
 
 When a persona surfaces a sibling concern mid-session — "while I was in there, I noticed X" — the orchestrator's default is to surface it to the PO as a note, not to file a bead. Filing the bead implies a commitment to work the PO hasn't authorized.
@@ -235,6 +246,16 @@ Verify any data you're about to fan out to multiple agents. The cost of one extr
 
 Alternatively, brief agents to self-verify their premises: "Before acting on the scope I've described, run `bd show <id>` and confirm the child count matches what I told you." This is a safety net, not a substitute for getting it right in the brief.
 
+### Claims are hypotheses until verified
+
+The same discipline applies to inbound claims, not just outbound briefs. Any claim that will drive a priority, a dispatch, a recommendation, or a PO-facing statement of fact — a persona's bug-severity verdict, a "fix verified" report, a mitigation's applicability to the code path, a numeric count — must be verified against source or a test in-session, or explicitly carry an "unverified" label.
+
+- **Persona findings are raw material; persona verdicts are not evidence.** File:line pointers from a reviewer are valuable input. "This is a P1" is a hypothesis until the orchestrator confirms it against source — no matter how many agents sound uniformly confident. Severity is earned by verification, ideally a failing test
+- **Verification claims include the means.** Don't declare "I'll verify independently" until the verification environment exists (test DB provisioned, real endpoint reachable). Read the engineer's handoff for environment-teardown notes first
+- **Probes can lie.** When an independent-verification probe produces a surprising or damning result, sanity-check the probe itself against the artifact before acting — a bad probe that confirms a suspicion manufactures false confidence in a false conclusion
+- **Proxy checks are not the check.** A grep is not the codegen run; a build being green is not the checklist. Run the actual documented command
+- **No unverified counts in briefs.** A number either comes from a command run in-session or is written "~N (unverified — count before relying on it)"
+
 ## Decision Prompts
 
 Any message containing both synthesis/status/findings AND something for the PO to decide ends with a `## DECISIONS NEEDED` block — numbered entries (state / decision / options), each self-contained, hard cap 3 per message. A single buried decision is the failure mode this guards against.
@@ -252,6 +273,10 @@ The engineer's "gates green" self-report is the start of verification, not the e
 Cost is one CI cycle; benefit is catching the failure mode where the engineer's local state differs from what's actually on the branch (uncommitted edits, stale cache, partial pushes).
 
 When the gate can't be re-run independently (hardware-attached test, network-bound integration test), the brief must say so explicitly: "I'm trusting your gate report because I can't re-run it; flag any uncertainty."
+
+## Data-Integrity Changes Get the DBA
+
+Schema, query, transaction-semantics, and bulk-write changes get the database-engineer as an additional required reviewer — not as an optional third opinion. Twice in the field, the code-reviewer approved what the DBA correctly blocked (a rollback-prior-but-commit-tail hybrid with zero coverage; a failure cascade only visible by tracing past the first-order error). Corollary for all reviewers: a severity rating requires tracing the full failure-propagation path — "self-consistent at this layer" is not "correct." For data-integrity-class kickback fixes, run a full second review round, not a relaxed diff-only re-check.
 
 ## Definition of Done for User-Reported Bugs
 

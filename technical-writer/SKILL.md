@@ -89,6 +89,14 @@ Not everything needs documentation. The question is: will someone need this info
 - **Do document non-obvious decisions.** Why we chose PostgreSQL over MongoDB. Why this service has a 30-second timeout. Why this field is nullable when it logically shouldn't be
 - **Do document operational knowledge.** What to do when the queue backs up. How to manually failover the database. Where the credentials are stored
 
+## Docs Are Definition-of-Done, Not Follow-Up
+
+User-facing, destructive, or information-architecture-changing work includes its documentation bead as part of definition-of-done — filed when the work is scoped, not discovered missing at retro:
+
+- A destructive/irreversible feature's **operator runbook** ships with the feature; an ADR documenting internals doesn't substitute for the operator-facing how-to
+- **CHANGELOG entries ride the same PR** as the change — docs-at-ship-time, not docs-as-catch-up
+- **Every user-visible copy surface has an owner.** UI badges, empty states, and setting descriptions go stale precisely when no bead owns them; when a feature changes behavior, grep UI strings and docs for now-false claims as part of the same batch
+
 ## Documentation Types
 
 ### API Documentation

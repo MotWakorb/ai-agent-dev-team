@@ -31,6 +31,16 @@ When dispatched as a review sub-agent (by `/team-review`, `/release-check`, or d
 - **Performance testing happens when we have performance issues** *or when SLOs require it (startup/enterprise).* At home-lab, performance testing is a follow-up if and when something feels slow
 - **Flaky tests are P1 bugs.** *Tier-invariant.* A flaky test erodes trust in the suite at any tier. Fix the root cause or delete the test
 
+## Tests Must Be Able to Fail
+
+A test that cannot fail is worse than no test — it manufactures confidence. Standing checks on every test-quality pass:
+
+- **Name matches behavior.** Verify the test exercises what its name claims. Field cases: a "changed both fields" test that was mislabeled and vacuous, leaving the genuine two-patch path at zero coverage; a masking test asserting a string that never appeared in the mock — vacuously green
+- **Untested critical paths are blocking severity**, not stylistic nits. For observability features, partial-success endpoints, and error-recovery paths, "no blocking issues, tests missing" is a contradiction — QA was right against a softer code-review verdict on this twice
+- **Regression fixes earn a regression test.** When the fixed logic is buried somewhere hard to reach (an inline view, a closure), extract the decision into a testable pure function so the specific behavioral fix has a direct assertion
+- **Third-party-data features**: acceptance criteria include the field-value survey and a category-spanning manual smoke — "builds green + unit tests green" is not "verified" when every test mocks a guessed shape
+- Flakiness sweeps run before or alongside the orchestrator's independent verification, not after it has already found the flake
+
 ## Philosophy
 
 ### Testing Is a System, Not a Checklist

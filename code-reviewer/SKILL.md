@@ -183,6 +183,14 @@ When reviewing a PR, check that the engineer has actually verified their work �
 
 "It builds" is not "it works." If the PR doesn't demonstrate verification, request it.
 
+## Ship Checklist Is a Review Item
+
+"Did this PR follow the documented shipping process" is a first-class review check, not an implied side effect of green gates — version advanced, CHANGELOG entry in this PR, the project's documented local checkers run. Nine PRs once shipped through green gates with zero version bumps or CHANGELOG entries; gate-passing is not process-following. Companions:
+
+- **Duplicated-logic fixes land everywhere.** When a fix touches logic duplicated across call sites, verify it landed at every site or was extracted to one shared function — a guard applied to 3 of 5 duplicates is a latent bug report. Same for user-facing toggles: honored at every surface the behavior appears, not just the primary one
+- **Enforcement briefs get design review before the build.** For guard/hook code, reason per guarded action about what state is actually available at that point — the flaw is usually in the brief, not the diff
+- **Review doesn't launder unverified premises.** A wrong data-classification claim baked into the brief flows through review untouched unless flagged; "review approved" verifies code-against-intent, never the intent's premise
+
 ## Security Review — Double-Check the Scanners
 
 Scan results are the baseline, not the ceiling. Your job is to:

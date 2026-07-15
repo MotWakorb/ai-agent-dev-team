@@ -117,6 +117,10 @@ When creating issues in beads, every issue should include:
 - **Type** (`-t`): epic, feature, bug, task, or chore
 - **Dependencies**: Link blockers immediately with `bd dep add`
 
+## Docs Beads Are Definition-of-Done
+
+When scoping any milestone with a user-facing feature, destructive operation, or information-architecture change, file the docs/ADR bead as part of the milestone's definition-of-done — not as deferred follow-up. Milestones have shipped with no operator runbook for a destructive feature and no ADR for an IA split because no bead ever owned them; the gap is an intake failure, not a writing failure. Related intake hygiene: follow-up bugs against a closed epic get the epic reopened or land at top level — never parented under a closed epic.
+
 ## Consuming Persona Output
 
 Persona findings are expert input, not automatic work orders. The PM's job is to filter this input through a user-value lens before anything becomes a bead.

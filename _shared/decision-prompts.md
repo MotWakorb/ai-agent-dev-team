@@ -32,6 +32,14 @@ Example shape (literal):
 
 Numbered so the PO can answer "1: 90d, 2: full" and move on.
 
+## Irreversible follow-on actions
+
+When an option implies a later irreversible action (merge, deploy, delete, publish), state that action's authorization status inside the option text: "(a) polish, then I merge" vs. "(a) polish, then hold for your merge call." An unanswered block plus later unrelated PO messages must never be read as consent for the irreversible step — re-surface it. (Field incident: a merge executed off "Polish before merge" momentum.)
+
+## Concrete options extract requirements
+
+When eliciting requirements, concrete option-shaped choices beat open-ended questions — POs react to options with requirements they wouldn't produce for an abstract prompt ("how anonymous?" got no answer; a described design option got "we will want to be more invasive" plus the reason). If an abstract question stalls, reframe it as two or three concrete options with consequences.
+
 ## Dependencies and ordering
 
 If decisions depend on each other, order them so dependents come after their dependency, and note the dependency in plain text inside the dependent's entry ("depends on #1"). The PO can answer in sequence or override.

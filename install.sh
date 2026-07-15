@@ -263,11 +263,19 @@ entries.append({
     "hooks": [{"type": "command", "command": cmd}],
 })
 
+# Merge ask-gate: merge-shaped commands always require a live human click.
+# An agent cannot infer merge authorization — retro-mined rule (2026-07).
+ask = settings.setdefault("permissions", {}).setdefault("ask", [])
+for rule in ("Bash(gh pr merge*)", "Bash(git merge*)"):
+    if rule not in ask:
+        ask.append(rule)
+
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
 print(f"  settings: PreToolUse enforcement hook in {path}")
+print(f"  settings: merge ask-gate (gh pr merge / git merge require live approval)")
 PY
 
 echo ""

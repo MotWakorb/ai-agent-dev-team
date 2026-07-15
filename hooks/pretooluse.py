@@ -7,6 +7,9 @@ orchestration rules from prose to guarantees:
 
   A. Orchestrator edit block — in onboarded projects (COMPONENTS.md present),
      the main agent may not Edit/Write project files; personas implement.
+  A2. Orchestrator Bash-mutation block — same rule, Bash loophole: in-place
+     editors (sed -i, perl -i, patch) and redirects/tee into project files
+     are denied for the main agent in onboarded projects.
   1. Ceremony gate — team ceremonies deny without COMPONENTS.md (run /onboard).
   2. Persona bead firewall — subagents may not create/close/delete/reopen
      beads; board state transitions are orchestrator territory.
@@ -96,6 +99,28 @@ def main():
     if tool == "Bash":
         cmd = tool_input.get("command") or ""
 
+        # Rule A2: orchestrator Bash-mutation block (the Bash loophole in rule A).
+        # ponytail: heuristic — catches sed -i/perl -i/patch and redirect/tee into
+        # project-tree paths; cp/mv and exotic shapes are out of scope until a retro
+        # shows them in the field.
+        if agent_id is None and onboarded:
+            if re.search(r"\b(sed|perl)\s+(-\w+\s+)*-\w*i|(?:^|[;&|]\s*)patch\s", cmd):
+                deny("Orchestrator Bash edit blocked: in-place file edits (sed -i, "
+                     "perl -i, patch) in an onboarded team project are persona work — "
+                     "dispatch the owning persona. For orchestrator-territory files "
+                     "(CLAUDE.md, .claude/) use the Edit/Write tools.")
+            for m in re.finditer(r"(?:^|[\s|;&])\d*>{1,2}\s*([^\s;&|)]+)|\btee\s+(?:-a\s+)?([^\s;&|-][^\s;&|]*)", cmd):
+                target = m.group(1) or m.group(2)
+                if target.startswith(("&", "/dev/")):
+                    continue
+                expanded = os.path.expandvars(os.path.expanduser(target))
+                resolved = os.path.realpath(expanded if os.path.isabs(expanded)
+                                            else os.path.join(cwd, expanded))
+                if resolved == root or resolved.startswith(root + os.sep):
+                    deny("Orchestrator Bash edit blocked: writing into the project "
+                         "tree via redirect/tee in an onboarded team project is "
+                         "persona work — dispatch the owning persona.")
+
         # Rule 2: persona bead firewall (beads:* agent types manage their own tasks)
         if agent_id is not None and not agent_type.startswith("beads:"):
             if re.search(r"\bbd\s+(create|close|delete|reopen)\b", cmd):
@@ -151,6 +176,18 @@ def _self_check():
     assert not run(dict(edit, agent_id="a1"), onboarded)
     assert not run({"tool_name": "Write", "tool_input": {"file_path": "<root>/COMPONENTS.md"}}, onboarded)
     assert not run({"tool_name": "Write", "tool_input": {"file_path": "/somewhere/else/notes.md"}}, onboarded)
+    # Rule A2: orchestrator sed -i / redirect into project denied when onboarded;
+    # subagent, non-onboarded, /tmp and /dev/null targets all allowed
+    sedi = {"tool_name": "Bash", "tool_input": {"command": "sed -i '' 's/a/b/' <root>/web/app.css"}}
+    assert run(sedi, onboarded)
+    assert not run(sedi)
+    assert not run(dict(sedi, agent_id="a1"), onboarded)
+    redir = {"tool_name": "Bash", "tool_input": {"command": "echo hi > <root>/src/x.txt"}}
+    assert run(redir, onboarded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": "echo hi >> notes.md"}}, onboarded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": "echo hi > /tmp/scratch.txt"}}, onboarded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": "pytest > /dev/null 2>&1"}}, onboarded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": "cat a | tee <root>/README.md"}}, onboarded)
     # Rule 2: subagent bd create denied; orchestrator, beads:*, and bd update allowed
     bd = {"tool_name": "Bash", "tool_input": {"command": "bd create 'thing'"}}
     assert run(dict(bd, agent_id="a1"))

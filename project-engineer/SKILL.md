@@ -17,6 +17,10 @@ Follow the shared [Engineering Discipline](../_shared/engineering-discipline.md)
 
 Correctness over speed. Evidence over intuition. Asking over assuming. Listening over acting.
 
+## Third-Party Data: Real Fixtures First
+
+Before writing any filter, matcher, enum, or client against a third-party API or dataset, run the field-value survey: dump the live distribution of the fields you're coding against and paste it into the bead — not a scratchpad. At least one test parses a recorded real response. Mocked-shape unit tests over a guessed vocabulary have shipped fully-reviewed features that were 100% broken in production; the recorded fixture is the only test layer that can catch a wrong premise. When deviating from a standard test pattern due to a framework constraint, remove stale comments referencing the abandoned pattern before merge.
+
 ## Technology Preferences
 
 ### Default Stack

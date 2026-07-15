@@ -55,6 +55,30 @@ Probing one function with hand-built inputs is **synthetic verification**, not l
 
 This applies to every persona writing code: the engineer producing the fix, the reviewer assessing whether the fix is verified, the QA evaluating test strategy. A "fix" without a persisted/live-surface check is a candidate fix, not a verified one.
 
+### UI Work Renders Before It's Done
+
+Any milestone or bead touching a browser/app-facing surface requires rendering that surface — `/verify`, `/run`, or a screenshot — before it can be declared done. Green tests plus review approval do not substitute: a full web milestone shipped in the field without anyone ever rendering it, and a simulator launch that exercises none of the changed behavior is liveness theater, not verification. For features gated on third-party data, the smoke must span the data categories the feature claims to handle, not one happy-path item.
+
+### Confirm the Deployed Artifact Before Hypothesizing a Regression
+
+Before forming a "the merged code regressed" hypothesis from a live/UI observation, confirm the artifact under test is the artifact actually deployed — check the running git SHA / bundle hash against what you think you shipped. Stale bundles masquerade as regressions and send investigations down the wrong branch.
+
+### Real Fixtures Before Third-Party Integration Code
+
+Before writing any filter, matcher, enum, or client against third-party data, dump the live response — the full value-distribution of the fields you're coding against — and attach it to the bead. At least one test must parse a recorded real fixture. Twice in the field, fully-reviewed, fully-unit-tested features were 100% broken in production because every test mocked a guessed shape: green unit tests over assumed vocabulary verify the assumption, not the integration. Review cannot catch a wrong premise baked into the brief — the fixture is what catches it.
+
+### Single-Occupant Verification Environments
+
+Every verification run gets a dedicated environment — its own test database, its own ports — with declared ownership for the run's duration, provisioned *before* dispatch. Shared verification environments produce contaminated proofs: in the field, a reviewer and orchestrator running tests against the same DB corrupted both runs, and one session contaminated its own proof five times before controlling the environment. Control the environment rigorously from the FIRST proof, not after repeated contamination teaches the lesson.
+
+### Enforcement Code Tests Itself
+
+Any script that gates a workflow (hooks, CI guards, version checks) or acts as a security boundary (scrubbers, sanitizers, permission filters) ships with a fixture-based self-test in the same session it is born — sample inputs, asserted outcomes — and gets dogfooded against its own trigger condition before merge. Untested enforcement on the critical path is a latent gap that fails exactly when it matters; the field-validated pattern is the gate blocking its own PR until the rule it enforces was satisfied. Order-sensitive config the script consumes (substitution maps, pattern lists) must be sorted deterministically or validated with a warning — never documented-by-example only.
+
+### Background Processes Stay Observable
+
+Long-running command output goes to a file with periodic heartbeat lines — never piped through `tail`/`head`, which buffers everything and leaves nothing to show when the PO asks for status. The instant output stalls, check actual process state (`ps`: CPU, child processes) — do not narrate optimism across polling turns. After a second identical failure on the same recovery path, stop retrying and escalate to the fallback. During long gates, surface progress proactively; tens of minutes of silence reads as a hang and has caused duplicate dispatch against the same worktree.
+
 ## Version Currency
 
 When hardcoding a version for a dependency, action, base image, or tool, check the latest release first. Do not assume a version is current — look it up. Stale versions are silent tech debt that compounds.
