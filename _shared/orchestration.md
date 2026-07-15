@@ -145,6 +145,7 @@ Persona SKILL.md files default to `model: sonnet` — the right baseline for dir
 | `/postmortem` — fact-gathering, timeline construction | sonnet | |
 | `/postmortem` — root cause analysis (SRE + relevant) | opus | Worth the cycles to get this right |
 | `/retro` (all personas) | sonnet | |
+| `/retro-mine` readers | sonnet | Extraction is mechanical; clustering stays with the orchestrator |
 
 ### Tier Modulation
 

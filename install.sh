@@ -104,6 +104,8 @@ SKILLS=(
   qa-engineer
   technical-writer
   retro
+  retro-sync
+  retro-mine
   team-plan
   team-review
   standup

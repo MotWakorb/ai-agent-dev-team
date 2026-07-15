@@ -144,6 +144,8 @@ Single-purpose orchestrator skills that guard a specific operational concern. Th
 | Skill | Command | Purpose |
 |-------|---------|---------|
 | **Release Check** | `/release-check` | Pre-release semantic readiness — verifies open P0/P1 bugs are clear, in-flight verification agents have completed, and the PO has explicitly confirmed before any release-execution agent fires |
+| **Retro Sync** | `/retro-sync` | Scrub, pseudonymize, and sync `~/retros/` with the shared public corpus at [EndofLineTech/retros](https://github.com/EndofLineTech/retros) — push local retros, pull everyone else's |
+| **Retro Mine** | `/retro-mine` | Mine the retro corpus for recurring patterns and turn them into proposed rule changes for this skill system. Evidence-clustered (≥2 retros = rule candidate, 1 = watch item), detects rules that aren't working, PO approves before any edit |
 
 ## Shared Foundations
 
@@ -321,6 +323,8 @@ Use ceremonies to coordinate the full team:
 /team-review         # Full team review of existing work
 /postmortem          # Blameless incident analysis
 /retro               # End-of-session retrospective
+/retro-sync          # Scrub + sync retros with the shared public corpus
+/retro-mine          # Mine the retro corpus into proposed skill-system rule changes
 ```
 
 ### Operational Skills
@@ -504,6 +508,7 @@ These skills are designed to be adapted. If you install with `--copy`, you can m
 | **Observability stack** | `sre/SKILL.md` | Default evaluates per-project. Set your standard stack (Datadog, Grafana Cloud, etc.) |
 | **Database preferences** | `database-engineer/SKILL.md` | Default is PostgreSQL-primary. Adjust for your data platform |
 | **Retro location** | `retro/SKILL.md` | Default is `~/retros/`. Change to your preferred location |
+| **Retro sync target** | `retro-sync/SKILL.md` | Default is the shared public [EndofLineTech/retros](https://github.com/EndofLineTech/retros). Point at your own repo (private if you prefer) — the scrub still runs |
 | **Conflict resolution** | `_shared/conflict-resolution.md` | Adjust domain authority boundaries, security escalation tiers, or the disagree-and-commit protocol |
 | **Engineering discipline** | `_shared/engineering-discipline.md` | Add your own known failure modes, naming conventions, or principles |
 | **Orchestration rules** | `_shared/orchestration.md` | Default rules for agent dispatch, worktree isolation, decision compression. Adjust for your workflow |
@@ -581,6 +586,12 @@ claude-agent-dev-team/
 ├── onboard/SKILL.md                 # Project onboarding ceremony
 ├── release-check/SKILL.md           # Pre-release semantic readiness gate
 ├── retro/SKILL.md                   # Session retrospective ceremony
+├── retro-sync/                      # Retro scrub + sync to shared public corpus
+│   ├── SKILL.md
+│   └── scrub.sh                     # Deterministic redaction/pseudonymization pass
+├── retro-mine/                      # Retro corpus → proposed skill-system rule changes
+│   ├── SKILL.md
+│   └── LAST_MINED                   # Watermark: newest retro covered by the last pass
 ├── install.sh                       # Installer script (macOS/Linux)
 ├── install.ps1                      # Installer script (Windows)
 ├── uninstall.sh                     # Uninstaller script (macOS/Linux)
