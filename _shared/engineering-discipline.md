@@ -75,9 +75,26 @@ Every verification run gets a dedicated environment — its own test database, i
 
 Any script that gates a workflow (hooks, CI guards, version checks) or acts as a security boundary (scrubbers, sanitizers, permission filters) ships with a fixture-based self-test in the same session it is born — sample inputs, asserted outcomes — and gets dogfooded against its own trigger condition before merge. Untested enforcement on the critical path is a latent gap that fails exactly when it matters; the field-validated pattern is the gate blocking its own PR until the rule it enforces was satisfied. Order-sensitive config the script consumes (substitution maps, pattern lists) must be sorted deterministically or validated with a warning — never documented-by-example only.
 
+The contract applies to *every* hook regardless of language — shell wrappers included, not just the Python core (a shell hook whose only tested part was its inner comparator over-triggered in the field). Two field-proven false-positive classes every hook self-test must cover:
+
+- **Quoted data is not command syntax.** Matching raw command text means a trigger phrase or metachar *inside a quoted string* (a `bd` description containing `>=`, a commit message naming the guarded command) spuriously fires the guard. Strip or tokenize quoted spans before matching; assert a quoted-payload case in the fixture.
+- **Resolve the actual target tree.** A hook that validates against a static root (`$CLAUDE_PROJECT_DIR`, the main checkout) false-blocks legitimate worktree flows. Derive the tree from the command's own cwd / `cd` / `git -C` at call time; assert a worktree case in the fixture. Same family: never hardcode an id shape (digit-suffix bead ids) the ecosystem doesn't guarantee — read the shape from the repo's own config.
+
 ### Background Processes Stay Observable
 
 Long-running command output goes to a file with periodic heartbeat lines — never piped through `tail`/`head`, which buffers everything and leaves nothing to show when the PO asks for status. The instant output stalls, check actual process state (`ps`: CPU, child processes) — do not narrate optimism across polling turns. After a second identical failure on the same recovery path, stop retrying and escalate to the fallback. During long gates, surface progress proactively; tens of minutes of silence reads as a hang and has caused duplicate dispatch against the same worktree.
+
+Three field-proven watch failures:
+
+- **A background watch dies with the turn.** A subagent that arms a background poller/monitor and then ends its turn orphans the watch — 5/5 ship agents in one session. If your task is "wait for checks, then merge," wait synchronously and finish inside the turn; ship/verify briefs state this from the *first* dispatch, not after the pattern repeats.
+- **Watchers must not match themselves.** A `pgrep -f`/`pkill -f` pattern that appears in the watcher's own command line is a guaranteed deadlock (two watchers hung forever on each other). Use a pattern that cannot occur in the invoking command, or filter out your own PID.
+- **No arbitrary timeouts on known-long gates.** Wrapping a 10-minute test suite in a 590-second timeout is self-sabotage. If the gate's duration is known, the timeout exceeds it or is omitted.
+
+### The Environment Is Part of the Gate
+
+A gate run under the wrong interpreter or toolchain proves nothing — 9 tests "failing" on a stale ambient library reads as a regression until someone notices `.venv/` was one `ls` away. Before running any verification gate, check for and use the project-local environment (`.venv/bin/python`, the repo's pinned node via `fnm`/`nvm`, worktree bootstrap scripts); never assume ambient tooling matches the project.
+
+Environment traps propagate forward, not per-agent: the first time a trap is discovered in a session (interpreter path, known-flaky test, id-shape convention), it goes into every subsequent dispatch brief — the same venv trap hitting a third agent is an orchestrator failure, not bad luck. The durable fix is a repo-pinned gate script (`scripts/gate.sh` or `make verify`) that selects interpreter and tool paths itself; recommend one wherever gates depend on tribal environment knowledge, and reference it in briefs instead of restating environment facts each time.
 
 ## Version Currency
 

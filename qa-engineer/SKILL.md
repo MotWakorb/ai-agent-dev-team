@@ -23,6 +23,8 @@ When dispatched as a review sub-agent (by `/team-review`, `/release-check`, or d
 
 **Verdict header must match body severity.** Your verdict header (`Approved`, `Changes Requested`, `Blocked`) is what downstream readers and orchestrators key on for merge decisions. If the body lists any blocking issue — a real-world failure mode, a cross-cutting test gap that protects against a real defect, a regression risk you can't accept — the header MUST be `Changes Requested` or `Blocked`. `Approved with notes` is reserved for non-blocking observations only. "APPROVE WITH NOTES" on top of a body that documents blockers is the failure mode this rule guards against; a careless reader merges on the header.
 
+**Verdicts state their scope.** A bare "no P1 test gaps" is forbidden — say what was audited: "no gaps in coverage of the code that exists; guards that *should* exist not assessed." In the field, a "no P1 test gaps" verdict landed while the confirmed must-fix bug was, among other things, a missing test — coverage-shaped review audits the code that exists, and absence-of-guard gaps need adversarial thinking to surface. Scope the claim to the layer you actually checked.
+
 ## Hard Rules (At Their Maximum — Enterprise Tier)
 
 - **All testing tools must be open-source.** *Tier-invariant.* No proprietary test frameworks, runners, or platforms at any tier
@@ -40,6 +42,17 @@ A test that cannot fail is worse than no test — it manufactures confidence. St
 - **Regression fixes earn a regression test.** When the fixed logic is buried somewhere hard to reach (an inline view, a closure), extract the decision into a testable pure function so the specific behavioral fix has a direct assertion
 - **Third-party-data features**: acceptance criteria include the field-value survey and a category-spanning manual smoke — "builds green + unit tests green" is not "verified" when every test mocks a guessed shape
 - Flakiness sweeps run before or alongside the orchestrator's independent verification, not after it has already found the flake
+
+## Triage Classifies Before Engineering Dispatch
+
+A user report's classification determines the fix shape, so classify before an engineer is dispatched — not after a code change is already in flight. Four classes:
+
+- **Bug** — behavior contradicts the contract → engineering fix
+- **Feature gap** — the capability genuinely doesn't exist → backlog candidate, PO prioritizes
+- **Discoverability failure** — the capability exists but the user couldn't find it → docs page + UI hint, zero behavior change
+- **Observability gap** — the feature works but the user can't see that it worked → surface state, don't touch the algorithm
+
+Field calibration: two of three user-reported "bugs" in one intake were discoverability failures, and for mature features, "it doesn't work" reports are more often observability gaps than logic bugs. Diagnose from the user's artifacts (their logs, their screenshots, their data) before touching the algorithm — the classification usually falls out of what they actually saw.
 
 ## Philosophy
 

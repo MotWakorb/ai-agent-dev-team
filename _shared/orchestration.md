@@ -65,6 +65,13 @@ Default to `isolation: "worktree"` for any agent that *might* commit. The cost o
 
 Without isolation, parallel write-mode agents share a single `.git/HEAD`. Agent A's `git checkout` changes the branch under Agent B's `git add` and `git commit`. The resulting state — commits on the wrong branch, stray parent commits, orphaned work — is recoverable but expensive and sometimes silent.
 
+### Concurrent-session intake check
+
+The same collision happens one level up: two orchestrator *sessions* on one checkout are two writer agents with no shared visibility, and they silently invalidate a sequential-engineer default. Field cost in one day: two full rework cycles, branch flips under a running engineer, and a file-overlap near-miss discovered only at cleanup.
+
+- **At intake**, when the PO flags another active session — or evidence suggests one (unexpected branch changes, files shifting underfoot, build-number collisions) — establish the other session's file/branch scope before dispatching anything: `git worktree list`, `git branch`, and ask the PO what the other session is touching. Compare against this session's intended targets and surface any overlap to the PO up front, not at cleanup.
+- **Before any ship sequence** (push/PR/merge chain), re-check for concurrent-session evidence — ship steps are where uncoordinated sessions collide hardest (build numbers, branch state, first-write-wins artifacts).
+
 ### Orchestrator-self discipline
 
 The orchestrator's own destructive git operations cross worktree boundaries. Before running any of:
@@ -87,9 +94,11 @@ Prefer structural enforcement first: dispatch review-mode personas as the `perso
 
 In either case, briefs that dispatch a persona in review mode (code-reviewer, qa-engineer, security-engineer, or any persona invoked to assess existing work without changing it) MUST include verbatim language restricting the agent to read-only operations — the agent type doesn't restrict Bash, and the fence is the only guard on destructive commands:
 
-> "READ-ONLY. Do not run Edit, Write, NotebookEdit, or any state-mutating Bash command — `git reset`, `git checkout -- <path>`, `git restore`, `git clean`, `git branch -D`, `rm`, formatters without `--check`, `pre-commit run` without `--show-diff-on-failure`. Report findings; do not apply them."
+> "READ-ONLY in the shared tree. Do not run Edit, Write, NotebookEdit, or any state-mutating Bash command against it — `git reset`, `git checkout -- <path>`, `git restore`, `git clean`, `git branch -D`, `rm`, formatters without `--check`, `pre-commit run` without `--show-diff-on-failure`. Evidence allowance: to confirm a finding you may build a reproduction in a disposable `git worktree` of the branch under review or in the scratchpad — never in the shared tree. Remove the worktree when done, and disclose in your report what you built and where. Report findings; do not apply them."
 
 The brief-level instruction is necessary because tool access is inherited from the parent — the agent has Edit and destructive Bash available regardless of what the SKILL.md says. The brief is the only fence between the persona and the worktree. Reviewer-driven `git reset --hard` loops, silent formatter runs, and "let me just fix this one line" mid-review are the documented failure mode — and they corrupt parallel engineer work in the same tree.
+
+The evidence allowance exists because a fence that demands "confirmed, not theoretical" severity while forbidding every mechanism of confirmation is internally contradictory — in the field, the most valuable finding of a ten-persona review required breaching the old blanket fence to build a repro, a choice that shouldn't be the agent's to make. Confirmation happens in disposable space with mandatory cleanup and disclosure; the shared tree stays untouched.
 
 ### CWD drift
 
@@ -214,6 +223,20 @@ When a decision option implies a later irreversible action (merge, deploy, delet
 
 Irreversibility also raises the diligence bar: before a one-way, outward-facing action (public publishing, external-system writes), review is enumerative — every item, every category — or the PO explicitly signs off on sampling. Grep-level spot checks are for reversible actions.
 
+### Explicit instructions govern execution style, not premise verification
+
+"Don't come back to me" / "nothing needs my input" waives check-ins, not the premise check. An explicit instruction lowers the bar for *how* to proceed, never for *whether the premise is right*. When the premise looks surprising at contact — the named PR is an old merged docs change, the count doesn't match the board — one confirmation line is mandatory before an expensive fan-out, even under don't-ask framing. Field cost of skipping it: a ten-persona team-review launched against the wrong project, several hundred thousand tokens burned against a ten-second question.
+
+### Tracker type is not authorization scope
+
+A bead's `type: bug` says what it is, not whose it is. Before claiming any item in a batch instruction ("finish the bugs"), classify its subject — product code, org tooling, process — and flag the odd-one-out rather than assuming inclusion. Cross-boundary items, especially anything touching live enforcement infrastructure (hooks registered in harness settings affect every project immediately), go into a `DECISIONS NEEDED` block *before* any edit: decision first, implementation second. "Where should this work live" is itself a decision worth surfacing.
+
+Corollary (PO-established): defects in the persona system's own hooks and skills never enter project backlogs — their change-control path is retro → retro-mine → proposed rule change → PO approval. When one is found already filed in a project tracker, migrate it: full technical payload preserved in the retro, bead closed with a pointer.
+
+### Ship-authorization split
+
+Engineers work through commit; the orchestrator — whose context holds the PO's actual words — does push, PR, and merge. Never relay PO consent into a subagent brief ("the PO said yes"): permission classifiers correctly refuse relayed consent, and three classifier walls in one session proved the pattern structurally cannot work. When a ship step genuinely must run inside a subagent, the brief instructs it to wait synchronously on any gate or check it arms — background watches die at turn-end (see engineering-discipline §"Background Processes Stay Observable").
+
 ## Findings From Personas Are Notes, Not Beads
 
 When a persona surfaces a sibling concern mid-session — "while I was in there, I noticed X" — the orchestrator's default is to surface it to the PO as a note, not to file a bead. Filing the bead implies a commitment to work the PO hasn't authorized.
@@ -255,6 +278,9 @@ The same discipline applies to inbound claims, not just outbound briefs. Any cla
 - **Probes can lie.** When an independent-verification probe produces a surprising or damning result, sanity-check the probe itself against the artifact before acting — a bad probe that confirms a suspicion manufactures false confidence in a false conclusion
 - **Proxy checks are not the check.** A grep is not the codegen run; a build being green is not the checklist. Run the actual documented command
 - **No unverified counts in briefs.** A number either comes from a command run in-session or is written "~N (unverified — count before relying on it)"
+- **Unscoped PASS verdicts are forbidden.** A PASS names what was checked: "Security — PASS on traversal/validation; hardlink-inode interaction not traced," never a bare "Security — PASS." Layer-local consistency is not correctness — in the field, two personas passed the exact layer where the deepest reviewer confirmed a corruption bug, and absence-of-guard defects are invisible to coverage-shaped review
+- **Completion reports state the verification performed, not just the files touched.** "Swept N references repo-wide; these locations are all of them" preempts the PO's trust-but-verify follow-up. Equivalence claims ("installed copy matches the repo") are diffed before being stated, not inferred from tool-message wording and verified only when prompted
+- **One verification bar for all personas.** Claims bound for an outward-facing artifact (PR comment, public review, release note) get the same verification rigor whichever persona made them — verifying only the claims that feel highest-risk puts the unverified ones in public under a consensus banner
 
 ## Decision Prompts
 
@@ -265,6 +291,12 @@ Full format — example block, dependency ordering, one-by-one mode, anti-patter
 ## Review History Before Re-Reviewing
 
 Before submitting new review findings on a PR that has prior review rounds, fetch the review history (`gh api repos/{owner}/{repo}/pulls/{number}/reviews` and `.../comments`) and cross-check: do not re-raise items a prior round explicitly classified as non-blocking — reclassify only with stated new information. If remaining findings are all enhancement-class, ship and fix forward via beads. Full protocol and rationale: [`../code-reviewer/SKILL.md`](../code-reviewer/SKILL.md) §"Review History Discipline" — the same rule, from the persona that owns it.
+
+## Every Merged PR Gets a Review Pass
+
+Gates verify; reviews review. Every PR merged in a session gets a dedicated code-reviewer dispatch before merge, or an explicit PO waiver for that PR. An independent gate re-run is not a substitute: gates prove the tests pass — they don't review whether the tests pin the right contract, whether chosen values (limits, ceilings, timeouts) are right, or whether new parsing has injection-shaped edge cases. Batch momentum is the documented failure mode: six PRs across two sessions merged on engineer report plus gate re-runs alone, zero review dispatches, flagged by the code-reviewer persona both times.
+
+Never waivable, even by batch momentum: hook/enforcement code and security-adjacent diffs — anything that parses command text or resolves filesystem paths to make an allow/deny decision — which additionally get the security-engineer lens (a version-guard's path-candidate parsing shipped with no adversarial review of whether a crafted command could point validation at an attacker-chosen tree).
 
 ## Re-Verify Gates on Engineer Report
 

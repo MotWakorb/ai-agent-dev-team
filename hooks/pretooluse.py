@@ -51,6 +51,19 @@ def git_root(path):
     return None
 
 
+def bead_prefix(root):
+    """The repo's own bead prefix: .beads/config.yaml issue-prefix, else dirname."""
+    try:
+        with open(os.path.join(root, ".beads", "config.yaml")) as f:
+            m = re.search(r'^\s*issue-prefix:\s*["\']?([A-Za-z][A-Za-z0-9_]*)',
+                          f.read(), re.M)
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    return os.path.basename(root)
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -98,18 +111,21 @@ def main():
 
     if tool == "Bash":
         cmd = tool_input.get("command") or ""
+        # Quoted spans are data, not command syntax: a `>=` or backtick inside a
+        # bd description must not read as a redirect (field false-positive, 3x).
+        scan = re.sub(r"'[^']*'|\"[^\"]*\"", " ", cmd)
 
         # Rule A2: orchestrator Bash-mutation block (the Bash loophole in rule A).
         # ponytail: heuristic — catches sed -i/perl -i/patch and redirect/tee into
         # project-tree paths; cp/mv and exotic shapes are out of scope until a retro
         # shows them in the field.
         if agent_id is None and onboarded:
-            if re.search(r"\b(sed|perl)\s+(-\w+\s+)*-\w*i|(?:^|[;&|]\s*)patch\s", cmd):
+            if re.search(r"\b(sed|perl)\s+(-\w+\s+)*-\w*i|(?:^|[;&|]\s*)patch\s", scan):
                 deny("Orchestrator Bash edit blocked: in-place file edits (sed -i, "
                      "perl -i, patch) in an onboarded team project are persona work — "
                      "dispatch the owning persona. For orchestrator-territory files "
                      "(CLAUDE.md, .claude/) use the Edit/Write tools.")
-            for m in re.finditer(r"(?:^|[\s|;&])\d*>{1,2}\s*([^\s;&|)]+)|\btee\s+(?:-a\s+)?([^\s;&|-][^\s;&|]*)", cmd):
+            for m in re.finditer(r"(?:^|[\s|;&])\d*>{1,2}(?!=)\s*([^\s;&|)]+)|\btee\s+(?:-a\s+)?([^\s;&|-][^\s;&|]*)", scan):
                 target = m.group(1) or m.group(2)
                 if target.startswith(("&", "/dev/")):
                     continue
@@ -130,15 +146,22 @@ def main():
                      "to file or close a bead. (bd update on beads you own is "
                      "allowed.)")
 
-        # Rule 3: bead-referenced commits
+        # Rule 3: bead-referenced commits. Two accepted id shapes: any
+        # prefix with a numeric suffix (proj-42), or the repo's OWN prefix
+        # with a bd-style alphanumeric suffix and optional dotted children
+        # (myrepo-wccvo, myrepo-0vao3.2). Own-prefix-only keeps hyphenated
+        # English ("well-tested") from passing as a bead reference.
         if (uses_beads
                 and re.search(r"\bgit\s+commit\b", cmd)
                 and re.search(r"(^|\s)(-[a-zA-Z]*m|--message)\b", cmd)
                 and "[no-bead]" not in cmd
-                and not re.search(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b", cmd)):
+                and not re.search(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b", cmd)
+                and not re.search(r"\b" + re.escape(bead_prefix(root))
+                                  + r"-[a-z0-9]+(?:\.\d+)*\b", cmd, re.I)):
             deny("This repo uses beads: commit messages must reference a bead "
-                 "id (e.g. proj-42). If this commit genuinely has no bead, "
-                 "include the literal token [no-bead].")
+                 "id (e.g. proj-42 or " + bead_prefix(root) + "-ab1c2). If this "
+                 "commit genuinely has no bead, include the literal token "
+                 "[no-bead].")
 
 
 def _self_check():
@@ -150,7 +173,8 @@ def _self_check():
             os.makedirs(os.path.join(tmp, ".git"))
             if setup:
                 setup(tmp)
-            payload = json.loads(json.dumps(payload).replace("<root>", tmp))
+            payload = json.loads(json.dumps(payload).replace("<root>", tmp)
+                                 .replace("<rootname>", os.path.basename(tmp)))
             payload.setdefault("cwd", tmp)
             proc = subprocess.run(
                 [sys.executable, os.path.abspath(__file__)],
@@ -163,6 +187,11 @@ def _self_check():
     def beaded(tmp):
         onboarded(tmp)
         os.makedirs(os.path.join(tmp, ".beads"))
+
+    def beaded_with_prefix(tmp):
+        beaded(tmp)
+        with open(os.path.join(tmp, ".beads", "config.yaml"), "w") as f:
+            f.write("issue-prefix: zork\n")
 
     # Rule 1: ceremony denied without COMPONENTS.md, allowed with; retro exempt
     assert run({"tool_name": "Skill", "tool_input": {"skill": "team-plan"}})
@@ -188,6 +217,10 @@ def _self_check():
     assert not run({"tool_name": "Bash", "tool_input": {"command": "echo hi > /tmp/scratch.txt"}}, onboarded)
     assert not run({"tool_name": "Bash", "tool_input": {"command": "pytest > /dev/null 2>&1"}}, onboarded)
     assert run({"tool_name": "Bash", "tool_input": {"command": "cat a | tee <root>/README.md"}}, onboarded)
+    # A2 false positives: metachars inside quoted data and bare >= are not redirects
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'bd update x-1 --notes "score >= 0.5 uses `median`"'}}, onboarded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": "awk $1 >= 3 file"}}, onboarded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": "echo 'sed -i is blocked'"}}, onboarded)
     # Rule 2: subagent bd create denied; orchestrator, beads:*, and bd update allowed
     bd = {"tool_name": "Bash", "tool_input": {"command": "bd create 'thing'"}}
     assert run(dict(bd, agent_id="a1"))
@@ -200,6 +233,14 @@ def _self_check():
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "proj-42: fix"'}}, beaded)
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "chore [no-bead]"'}}, beaded)
     assert not run(ci, onboarded)
+    # Rule 3 bd-style alphanumeric ids: own prefix (dirname or config override)
+    # accepts, wrong prefix and hyphenated English still deny
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-wccvo: fix"'}}, beaded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-0vao3.2: fix"'}}, beaded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "add well-tested helper"'}}, beaded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "otherproj-wccvo: fix"'}}, beaded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "zork-ab1c2: fix"'}}, beaded_with_prefix)
+    assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-wccvo: fix"'}}, beaded_with_prefix)
     print("all checks passed")
 
 
