@@ -144,7 +144,7 @@ Single-purpose orchestrator skills that guard a specific operational concern. Th
 | Skill | Command | Purpose |
 |-------|---------|---------|
 | **Release Check** | `/release-check` | Pre-release semantic readiness — verifies open P0/P1 bugs are clear, in-flight verification agents have completed, and the PO has explicitly confirmed before any release-execution agent fires |
-| **Retro Sync** | `/retro-sync` | Scrub, pseudonymize, and sync `~/retros/` with the shared public corpus at [EndofLineTech/retros](https://github.com/EndofLineTech/retros) — push local retros, pull everyone else's |
+| **Retro Sync** | `/retro-sync` | Scrub, pseudonymize, and push local retros in `~/retros/` to the shared public corpus at [EndofLineTech/retros](https://github.com/EndofLineTech/retros). Push-only — `/retro-mine` pulls the corpus down |
 | **Retro Mine** | `/retro-mine` | Mine the retro corpus for recurring patterns and turn them into proposed rule changes for this skill system. Evidence-clustered (≥2 retros = rule candidate, 1 = watch item), detects rules that aren't working, PO approves before any edit |
 
 ## Shared Foundations
@@ -323,7 +323,7 @@ Use ceremonies to coordinate the full team:
 /team-review         # Full team review of existing work
 /postmortem          # Blameless incident analysis
 /retro               # End-of-session retrospective
-/retro-sync          # Scrub + sync retros with the shared public corpus
+/retro-sync          # Scrub + push local retros to the shared public corpus
 /retro-mine          # Mine the retro corpus into proposed skill-system rule changes
 ```
 
@@ -586,7 +586,7 @@ claude-agent-dev-team/
 ├── onboard/SKILL.md                 # Project onboarding ceremony
 ├── release-check/SKILL.md           # Pre-release semantic readiness gate
 ├── retro/SKILL.md                   # Session retrospective ceremony
-├── retro-sync/                      # Retro scrub + sync to shared public corpus
+├── retro-sync/                      # Retro scrub + push to shared public corpus
 │   ├── SKILL.md
 │   └── scrub.sh                     # Deterministic redaction/pseudonymization pass
 ├── retro-mine/                      # Retro corpus → proposed skill-system rule changes

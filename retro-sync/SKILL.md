@@ -1,14 +1,14 @@
 ---
 name: retro-sync
-description: Scrub, pseudonymize, and sync local retros in ~/retros with the shared public GitHub repo (EndofLineTech/retros) — pushes local retros, pulls retros from other machines and contributors. Anyone using these skills can contribute.
-when_to_use: sync retros, push retros, gather retros, pull retros, share retros, contribute retros
+description: Scrub, pseudonymize, and push local retros in ~/retros to the shared public GitHub repo (EndofLineTech/retros). Push-only — /retro-mine pulls the corpus down for analysis. Anyone using these skills can contribute.
+when_to_use: sync retros, push retros, share retros, contribute retros
 user-invocable: true
-version: 0.2.0
+version: 0.3.0
 ---
 
 # Retro Sync
 
-Sync `~/retros/` with the shared learning corpus: `https://github.com/EndofLineTech/retros` (**public**). One run both sends local retros and gathers everyone else's. Retros are pseudonymized — the corpus is about process lessons, not about whose project it was.
+Push local retros in `~/retros/` to the shared learning corpus: `https://github.com/EndofLineTech/retros` (**public**). Push-only — pulling the corpus down for analysis is `/retro-mine`'s job. Retros are pseudonymized — the corpus is about process lessons, not about whose project it was.
 
 ## Process
 
@@ -34,14 +34,14 @@ Sync `~/retros/` with the shared learning corpus: `https://github.com/EndofLineT
 
 4. **Review** — if the scrub redacted anything (`[REDACTED]`, `[EMAIL]`, key markers — pseudonym renames don't count), show the user what and where. A redaction hit means the retro-writing rules leaked something; name the category so the rules can be tightened.
 
-5. **Commit and sync** (no hostnames or usernames in the commit message):
+5. **Commit and push** (no hostnames or usernames in the commit message):
    ```bash
    git -C ~/retros add -A
    git -C ~/retros commit -m "retro sync: <n> retro(s)"
-   git -C ~/retros pull --rebase origin main   # skip if origin/main doesn't exist yet
+   git -C ~/retros pull --rebase origin main   # prerequisite for the push, not a gathering step
    git -C ~/retros push -u origin main
    ```
-   Skip the commit if there's nothing staged; still pull so gathering works.
+   Nothing staged and nothing unpushed → stop; there's nothing to sync.
 
 6. **No write access?** If the push is rejected for permissions, contribute via fork:
    ```bash
@@ -50,7 +50,7 @@ Sync `~/retros/` with the shared learning corpus: `https://github.com/EndofLineT
    gh pr create --repo EndofLineTech/retros --head <your-user>:main --title "retro sync: <n> retro(s)" --fill
    ```
 
-7. **Report** — one line: N pushed, N pulled, anything redacted.
+7. **Report** — one line: N pushed, anything redacted.
 
 ## Public repo rules
 

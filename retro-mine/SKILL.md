@@ -3,7 +3,7 @@ name: retro-mine
 description: Mine the shared retro corpus (~/retros, synced from EndofLineTech/retros) for recurring patterns and turn them into proposed rule changes for the claude-agent-dev-team skill system. Evidence-clustered, PO-decided — the skill proposes, the PO approves.
 when_to_use: mine retros, retro mining, retro analysis, retro-driven upgrades, what are the retros telling us, turn retros into actions
 user-invocable: true
-version: 0.1.0
+version: 0.2.0
 ---
 
 # Retro Mine
@@ -14,7 +14,11 @@ Retros are the stress test for skill rules: patterns found here become rules, an
 
 ## Process
 
-1. **Sync** — run `/retro-sync` so `~/retros/` has everyone's latest retros.
+1. **Pull** — gather everyone's latest retros (`/retro-sync` is push-only):
+   ```bash
+   git -C ~/retros pull --rebase origin main
+   ```
+   If `~/retros` isn't a git repo yet, run `/retro-sync` once to bootstrap it, then pull.
 
 2. **Watermark** — `retro-mine/LAST_MINED` in this repo holds the filename of the newest retro covered by the last pass. Retro filenames are date-prefixed, so "new" = every date-prefixed file (`~/retros/20*.md`) sorting after it — ignore the corpus README. Missing watermark = mine the whole corpus.
 
