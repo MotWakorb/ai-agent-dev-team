@@ -131,6 +131,15 @@ class ReviewGateWorkflowTest(unittest.TestCase):
         self.assertIn("${{ inputs.pr_number }}", group_line)
         self.assertNotIn("head_sha", group_line)
 
+    def test_history_query_uses_paginated_per_page_jq(self):
+        script = extract_script()
+        history_command = script.split('classification_history="$(', 1)[1].split(
+            ')"', 1)[0]
+        self.assertIn("--paginate", history_command)
+        self.assertIn("--jq", history_command)
+        self.assertNotIn("--slurp", history_command)
+        self.assertIn("filter=all&per_page=100", history_command)
+
     def test_invalid_dispatch_and_input_states_reject(self):
         cases = (
             {"DISPATCH_ACTOR": "attacker"},
@@ -191,7 +200,10 @@ class ReviewGateWorkflowTest(unittest.TestCase):
         self.assertEqual(posts[2]["output[title]"], "dba-review:approved")
 
     def test_same_classification_replay_is_allowed(self):
-        history = "11\tcompleted\tsuccess\tclassification:other"
+        history = (
+            "11\tcompleted\tsuccess\tclassification:other\n"
+            "12\tcompleted\tsuccess\tclassification:other"
+        )
         result = self.run_gate(CHECK_HISTORY=history)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.posts()), 3)
