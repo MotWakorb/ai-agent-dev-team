@@ -6,6 +6,10 @@ Each `SKILL.md` carries a `version:` field in its frontmatter showing the system
 
 ## [Unreleased]
 
+- **Fifth-wave retro-driven enforcement** — approved `/retro-mine` changes from exactly **3 retros, 2026-07-17 → 2026-07-19**: user-visible implementation choices now require a cited PO/UX decision before dispatch; ship/verification briefs carry mandatory foreground, bounded-polling, same-turn completion language; and direct GitHub PR merges require provider-authoritative trusted check runs bound to the canonical repository and immutable head, plus a trusted database-engineer check for provider-classified data-integrity changes. The hook retains the independent live merge-authorization ask-gate and adds adversarial self-check coverage.
+
+- **Codex CLI enforcement hooks** — installers now register the shared `PreToolUse` dispatcher in Codex's `hooks.json` globally and in project-scoped `.codex/hooks.json`, preserve unrelated hook configuration, and remove only the managed entry on uninstall. The dispatcher now understands Codex `apply_patch` calls and treats `AGENTS.md`, `.agents/`, and `.codex/` as orchestration territory. Claude Code and Codex share edit, Bash-mutation, bead-firewall, and bead-referenced-commit enforcement; Codex skill activation is not exposed as a tool call, so its ceremony gate remains instruction-enforced.
+
 - **AI Agent Dev Team rebrand** — renamed the project and repository from `claude-agent-dev-team` to `ai-agent-dev-team`, updated user-facing copy, URLs, examples, installer output, managed-block markers, and retro-system references. Installers and uninstallers recognize legacy “Claude Agent Dev Team” markers so upgrades and removals remain clean.
 
 - **Claude Code + Codex installation** — both installers now install every team skill for Claude Code (`~/.claude/skills`) and Codex (`~/.agents/skills`), add managed orchestration guidance to both `CLAUDE.md` and Codex's `AGENTS.md`, and remove both installations symmetrically. Project-scoped macOS/Linux installs likewise populate `.claude/skills` and `.agents/skills`.

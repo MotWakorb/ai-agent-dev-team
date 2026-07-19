@@ -133,6 +133,26 @@ if ((Test-Path $AgentsMd) -and (Get-Content $AgentsMd -Raw) -match [regex]::Esca
     }
 }
 
+# --- Remove Codex PreToolUse enforcement hook ---
+$CodexHooksJson = Join-Path $CodexHome 'hooks.json'
+if ((Test-Path $CodexHooksJson) -and (Get-Content $CodexHooksJson -Raw) -match 'pretooluse\.py') {
+    $CodexHooks = Get-Content $CodexHooksJson -Raw | ConvertFrom-Json
+    $remaining = @($CodexHooks.hooks.PreToolUse | Where-Object {
+        ($_ | ConvertTo-Json -Depth 10) -notmatch 'pretooluse\.py'
+    })
+    if ($remaining.Count -eq 0) {
+        $CodexHooks.hooks.PSObject.Properties.Remove('PreToolUse')
+    }
+    else {
+        $CodexHooks.hooks.PreToolUse = $remaining
+    }
+    if ($CodexHooks.hooks.PSObject.Properties.Count -eq 0) {
+        $CodexHooks.PSObject.Properties.Remove('hooks')
+    }
+    $CodexHooks | ConvertTo-Json -Depth 10 | Set-Content $CodexHooksJson
+    Write-Host "  Cleaned: Codex PreToolUse hook removed from $CodexHooksJson"
+}
+
 Write-Host ''
 Write-Host "Done. Removed $removed skill installation(s)."
 Write-Host "Note: $RetroDir was not removed (may contain your retrospectives)"

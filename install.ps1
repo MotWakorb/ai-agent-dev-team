@@ -210,6 +210,39 @@ else {
     Write-Host "  AGENTS.md: added orchestration block to $AgentsMd"
 }
 
+# --- Register Codex PreToolUse enforcement hook ---
+$CodexHooksJson = Join-Path $CodexHome 'hooks.json'
+$CodexHookCommand = 'python3 "' + (Join-Path $RepoDir 'hooks/pretooluse.py') + '"'
+$CodexHookCommandWindows = 'py -3 "' + (Join-Path $RepoDir 'hooks/pretooluse.py') + '"'
+if (Test-Path $CodexHooksJson) {
+    $CodexHooks = Get-Content $CodexHooksJson -Raw | ConvertFrom-Json
+}
+else {
+    $CodexHooks = [pscustomobject]@{}
+}
+if (-not $CodexHooks.hooks) {
+    $CodexHooks | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
+}
+$existingPreToolUse = @()
+if ($CodexHooks.hooks.PreToolUse) {
+    $existingPreToolUse = @($CodexHooks.hooks.PreToolUse | Where-Object {
+        ($_ | ConvertTo-Json -Depth 10) -notmatch 'pretooluse\.py'
+    })
+}
+$existingPreToolUse += [pscustomobject]@{
+    matcher = 'Bash|Edit|Write|apply_patch|Skill'
+    hooks = @([pscustomobject]@{
+        type = 'command'
+        command = $CodexHookCommand
+        commandWindows = $CodexHookCommandWindows
+        timeout = 30
+        statusMessage = 'Enforcing AI Agent Dev Team policy'
+    })
+}
+$CodexHooks.hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue $existingPreToolUse -Force
+$CodexHooks | ConvertTo-Json -Depth 10 | Set-Content $CodexHooksJson
+Write-Host "  Codex hooks: PreToolUse enforcement in $CodexHooksJson"
+
 Write-Host ''
 Write-Host 'Done!'
 Write-Host "  Installed: $installed"

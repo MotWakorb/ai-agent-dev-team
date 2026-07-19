@@ -71,6 +71,9 @@ if [ -n "$PROJECT_DIR" ]; then
   CLAUDE_MD="${PROJECT_DIR}/CLAUDE.md"
   CODEX_SKILLS_DIR="${PROJECT_DIR}/.agents/skills"
   CODEX_MD="${PROJECT_DIR}/AGENTS.md"
+  CODEX_ROOT="${PROJECT_DIR}/.codex"
+  CODEX_HOOKS_JSON="${PROJECT_DIR}/.codex/hooks.json"
+  CODEX_HOOK_CMD='python3 "$(git rev-parse --show-toplevel)/.codex/hooks/pretooluse.py"'
   CODEX_ORCH_PATH=".agents/skills/_shared/orchestration.md"
   ORCH_PATH=".claude/skills/_shared/orchestration.md"
   # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook time, so the
@@ -85,7 +88,10 @@ else
   CLAUDE_ROOT="${HOME}/.claude"
   CLAUDE_MD="${CLAUDE_ROOT}/CLAUDE.md"
   CODEX_SKILLS_DIR="${HOME}/.agents/skills"
-  CODEX_MD="${CODEX_HOME:-${HOME}/.codex}/AGENTS.md"
+  CODEX_ROOT="${CODEX_HOME:-${HOME}/.codex}"
+  CODEX_MD="${CODEX_ROOT}/AGENTS.md"
+  CODEX_HOOKS_JSON="${CODEX_ROOT}/hooks.json"
+  CODEX_HOOK_CMD="python3 \"${REPO_DIR}/hooks/pretooluse.py\""
   CODEX_ORCH_PATH="~/.agents/skills/_shared/orchestration.md"
   ORCH_PATH="~/.claude/skills/_shared/orchestration.md"
   HOOK_CMD="python3 \"${REPO_DIR}/hooks/pretooluse.py\""
@@ -218,9 +224,11 @@ echo ""
 
 # --- Hook script (project installs get their own copy; global runs from the repo) ---
 if [ -n "$PROJECT_DIR" ]; then
-  mkdir -p "${CLAUDE_ROOT}/hooks"
+  mkdir -p "${CLAUDE_ROOT}/hooks" "${CODEX_ROOT}/hooks"
   cp "${REPO_DIR}/hooks/pretooluse.py" "${CLAUDE_ROOT}/hooks/pretooluse.py"
-  echo "  COPY: hooks/pretooluse.py"
+  cp "${REPO_DIR}/hooks/pretooluse.py" "${CODEX_ROOT}/hooks/pretooluse.py"
+  echo "  COPY: .claude/hooks/pretooluse.py"
+  echo "  COPY: .codex/hooks/pretooluse.py"
 fi
 
 # --- Manage orchestration blocks in CLAUDE.md and AGENTS.md ---
@@ -290,6 +298,8 @@ ask = settings.setdefault("permissions", {}).setdefault("ask", [])
 for rule in ("Bash(gh pr merge*)", "Bash(git merge*)"):
     if rule not in ask:
         ask.append(rule)
+required_ask = {"Bash(gh pr merge*)", "Bash(git merge*)"}
+assert required_ask.issubset(ask), "merge ask-gate registration failed"
 
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
@@ -297,6 +307,36 @@ with open(path, "w") as f:
     f.write("\n")
 print(f"  settings: PreToolUse enforcement hook in {path}")
 print(f"  settings: merge ask-gate (gh pr merge / git merge require live approval)")
+PY
+
+# --- Register Codex PreToolUse enforcement hook ---
+python3 - "$CODEX_HOOKS_JSON" "$CODEX_HOOK_CMD" <<'PY'
+import json, os, sys
+
+path, cmd = sys.argv[1], sys.argv[2]
+config = {}
+if os.path.isfile(path):
+    with open(path) as f:
+        config = json.load(f)
+
+entries = config.setdefault("hooks", {}).setdefault("PreToolUse", [])
+entries[:] = [e for e in entries if "pretooluse.py" not in json.dumps(e)]
+entries.append({
+    "matcher": "Bash|Edit|Write|apply_patch|Skill",
+    "hooks": [{
+        "type": "command",
+        "command": cmd,
+        "commandWindows": cmd.replace("python3 ", "py -3 ", 1),
+        "timeout": 30,
+        "statusMessage": "Enforcing AI Agent Dev Team policy",
+    }],
+})
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+print(f"  Codex hooks: PreToolUse enforcement in {path}")
 PY
 
 echo ""
@@ -319,6 +359,8 @@ if [ -n "$PROJECT_DIR" ]; then
     echo "  .claude/hooks/"
     echo "  .claude/settings.local.json"
     echo "  .agents/skills/"
+    echo "  .codex/hooks/"
+    echo "  .codex/hooks.json"
     echo "  AGENTS.md (only if it contains no shared project guidance)"
   else
     echo "Commit .claude/, .agents/, CLAUDE.md, and AGENTS.md to share the team."
