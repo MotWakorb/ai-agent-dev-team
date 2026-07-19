@@ -9,9 +9,9 @@ Rules for the block:
 - Keep it under ~15 lines. This loads into every session in the project; each line must earn its tokens.
 
 ```markdown
-# --- Claude Agent Dev Team (project) ---
+# --- AI Agent Dev Team (project) ---
 # Managed by /onboard. Re-run /onboard to update this block.
-This project is run by the Claude Agent Dev Team.
+This project is run by the AI Agent Dev Team.
 
 - **Tiers**: `COMPONENTS.md` at the repo root is the deployment-tier authority — read it before calibrating rigor.
 - **Board**: [beads (`bd`) | GitHub issues | other — where work is tracked]
@@ -19,5 +19,5 @@ This project is run by the Claude Agent Dev Team.
 - **Branching**: [convention, e.g. `feat/<bead-id>-slug`]; PRs target `[branch]`. Merge authority: PO only.
 - **Deploy**: [how and where it deploys, who or what triggers it]
 - **Off-limits without PO sign-off**: [paths, environments, or systems — delete if none]
-# --- End Claude Agent Dev Team (project) ---
+# --- End AI Agent Dev Team (project) ---
 ```

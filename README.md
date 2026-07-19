@@ -1,38 +1,38 @@
-# Claude Agent Dev Team
+# AI Agent Dev Team
 
-A set of Claude Code skills that simulate a full software development team with distinct professional personas. Each persona has domain expertise, professional biases, and the authority to disagree with the others. This is not a committee that politely agrees — it's a team that argues, commits, and ships.
+A set of Claude Code and Codex skills that simulate a full software development team with distinct professional personas. Each persona has domain expertise, professional biases, and the authority to disagree with the others. This is not a committee that politely agrees — it's a team that argues, commits, and ships.
 
 ## Installation
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/MotWakorb/claude-agent-dev-team.git
-cd claude-agent-dev-team
+git clone https://github.com/MotWakorb/ai-agent-dev-team.git
+cd ai-agent-dev-team
 ./install.sh
 ```
 
 **Windows (PowerShell 5.1+):**
 ```powershell
-git clone https://github.com/MotWakorb/claude-agent-dev-team.git
-cd claude-agent-dev-team
+git clone https://github.com/MotWakorb/ai-agent-dev-team.git
+cd ai-agent-dev-team
 ./install.ps1
 ```
 
-Updates are just `git pull` — symlinks pick up changes automatically. If upgrading from a version before orchestration discipline was added, re-run the installer to set up `~/.claude/CLAUDE.md` and the enforcement hook.
+The installers configure both tools: Claude Code skills go to `~/.claude/skills`, Codex skills go to `~/.agents/skills`, and each tool gets a managed orchestration block in its global instructions file. Updates are just `git pull` — symlinks pick up changes automatically. Re-run the installer when managed instruction or hook setup changes.
 
-The installer also registers a PreToolUse hook in `~/.claude/settings.json` (`hooks/pretooluse.py`) that converts the mechanically decidable orchestration rules from prose to guarantees — see [Enforcement Hooks](#enforcement-hooks). Windows: the hook is not yet wired into `install.ps1`.
+The installer also registers the shared `hooks/pretooluse.py` dispatcher for Claude Code in `~/.claude/settings.json` and for Codex CLI in `~/.codex/hooks.json`, converting mechanically decidable orchestration rules from prose to guarantees — see [Enforcement Hooks](#enforcement-hooks). On Windows, `install.ps1` registers the Codex hook; the Claude Code hook remains a gap.
 
 ### Project-Scoped Install
 
-If you don't want the team in your entire Claude workflow, install it into a single project instead:
+If you don't want the team in every Claude Code and Codex project, install it into a single project instead:
 
 ```bash
 ./install.sh --project /path/to/your/project
 ```
 
-Everything lands under that project — skills in `.claude/skills/`, the `persona-reviewer` agent in `.claude/agents/`, the enforcement hook in `.claude/hooks/` + `.claude/settings.json`, and the orchestration block in the project's `CLAUDE.md`. Claude Code picks all of it up only in that project; the rest of your workflow is untouched.
+Everything lands under that project — Claude Code skills in `.claude/skills/`, Codex skills in `.agents/skills/`, orchestration blocks in `CLAUDE.md` and `AGENTS.md`, shared enforcement hooks under `.claude/` and `.codex/`, plus the Claude-specific agent definition. Both tools pick the team up only in that project; the rest of your workflow is untouched. Codex requires the project to be trusted and the hook definition approved through `/hooks`.
 
-Project installs are copies, not symlinks, so they're self-contained: commit `.claude/` and `CLAUDE.md` and every teammate who clones the project gets the whole team with zero setup. The hook command uses `$CLAUDE_PROJECT_DIR`, so nothing user-specific is baked in. After a `git pull` in this repo, re-run the installer to update the copies.
+Project installs are copies, not symlinks, so they're self-contained: commit `.claude/`, `.agents/`, `.codex/`, `CLAUDE.md`, and `AGENTS.md` and every teammate who clones the project gets the whole team with zero setup. Hook commands resolve from each tool's project root, so nothing user-specific is baked in. After a `git pull` in this repo, re-run the installer to update the copies.
 
 For a personal install that stays out of the project's git history, add `--local` — the hook registers in `.claude/settings.local.json` and the installer prints the `.gitignore` lines to add. Uninstall with `./uninstall.sh --project /path/to/your/project`.
 
@@ -153,7 +153,7 @@ Single-purpose orchestrator skills that guard a specific operational concern. Th
 |------|---------|
 | `_shared/conflict-resolution.md` | How personas disagree and resolve conflicts. Domain authority, escalation to PO, disagree-and-commit protocol. Critical security findings are non-negotiable |
 | `_shared/engineering-discipline.md` | Evidence over intuition. Verify before asserting. Completeness over sampling. Known failure modes. Naming discipline. One-way door protocol |
-| `_shared/orchestration.md` | Orchestrator discipline — how Claude dispatches agents, isolates worktrees, picks models per task, compresses decisions, and avoids merging past in-flight verification. Auto-loaded via `~/.claude/CLAUDE.md` (or the project's `CLAUDE.md` for project-scoped installs) |
+| `_shared/orchestration.md` | Orchestrator discipline — how the coding agent dispatches subagents, isolates worktrees, picks models per task, compresses decisions, and avoids merging past in-flight verification. Auto-loaded through Claude Code's `CLAUDE.md` and Codex's `AGENTS.md` |
 | `_shared/deployment-tier.md` | Tier definitions (home-lab / small-team / startup / enterprise) and per-persona calibration tables. Personas read this to right-size their recommendations to the deployment context |
 | `_shared/claude-md-project-template.md` | Template for the project `CLAUDE.md` block `/onboard` offers to write — the per-project facts (board, gates, branching, deploy) personas need every session |
 | `*/identity.md` | Condensed identity tier for each persona — used by two-phase standup, quick-mode `/team-plan` and `/team-review`, default `/grooming`, and lightweight triage. Domain authority, professional biases, and standup triggers in ~15 lines |
@@ -207,16 +207,17 @@ The Product Owner makes all product and priority decisions. The one exception: C
 
 ### Enforcement Hooks
 
-Prompt-level rules (CLAUDE.md, SKILL.md) are advisory — they lose to context drift, compaction, and "it's just a 1-line edit" rationalizations. `hooks/pretooluse.py`, registered by install.sh, enforces the mechanically decidable rules deterministically, and its deny messages act as just-in-time reminders at the exact moment of violation:
+Prompt-level rules (`CLAUDE.md`, `AGENTS.md`, `SKILL.md`) are advisory — they lose to context drift, compaction, and "it's just a 1-line edit" rationalizations. `hooks/pretooluse.py`, registered for both Claude Code and Codex CLI by install.sh, enforces the mechanically decidable rules deterministically, and its deny messages act as just-in-time reminders at the exact moment of violation:
 
 | Rule | Trigger | Effect |
 |------|---------|--------|
-| **Orchestrator edit block** | Main agent calls Edit/Write/NotebookEdit on a project file in an onboarded project (`COMPONENTS.md` present) | Denied — dispatch the owning persona. `COMPONENTS.md`, `CLAUDE.md`, `.claude/` config, and files outside the project tree stay writable (orchestrator territory) |
-| **Ceremony gate** | A team ceremony (`/team-plan`, `/grooming`, `/standup`, `/spike`, `/team-review`, `/postmortem`) invoked without `COMPONENTS.md` | Denied — run `/onboard` first. The prose "refuses to run" is now a guarantee |
+| **Orchestrator edit block** | Main agent edits a project file via Claude Edit/Write/NotebookEdit or Codex `apply_patch` in an onboarded project (`COMPONENTS.md` present) | Denied — dispatch the owning persona. `COMPONENTS.md`, `CLAUDE.md`, `AGENTS.md`, tool config, and files outside the project tree stay writable |
+| **Ceremony gate** | A team ceremony (`/team-plan`, `/grooming`, `/standup`, `/spike`, `/team-review`, `/postmortem`) invoked without `COMPONENTS.md` | Claude Code: denied at the Skill tool call. Codex CLI: instruction-enforced because skill activation is not exposed to hooks as a tool call |
 | **Persona bead firewall** | A subagent runs `bd create/close/delete/reopen` | Denied — board state transitions are orchestrator territory; findings are reported, the PO decides. `bd update` stays allowed |
 | **Bead-referenced commits** | `git commit -m` without a bead id in a repo with `.beads/` | Denied — include the bead id, or the literal `[no-bead]` for genuinely untracked commits |
+| **Provider review gate** | Direct `gh pr merge <number> ... --match-head-commit <full-40-character-sha>` | Queries the configured GitHub hostname and requires trusted, successful `ai-team/code-review` and `ai-team/data-integrity-classification` checks on the canonical repo and exact head; data-integrity changes also require `ai-team/dba-review`. Missing config/provider state fails closed; direct `git merge` and shell wrappers are denied |
 
-The hook distinguishes orchestrator from subagent via the `agent_id` field in hook input (present only for subagents). Semantic rules — merge authorization, definition of done, backlog sign-off — can't be mechanically decided and stay in `_shared/orchestration.md`. This repo itself is exempt (meta-work on the skill system is direct-edit territory). Self-check: `python3 hooks/pretooluse.py --check`.
+Where the host supplies `agent_id`, the hook distinguishes orchestrator from subagent with that field. Live merge authorization, definition of done, and backlog sign-off remain semantic rules in `_shared/orchestration.md`; provider review evidence is mechanically verified but does not grant merge authorization. This repo remains exempt for meta-work edits, but not for merge review enforcement. Configure trusted GitHub Apps from [`_shared/review-gate.example.json`](./_shared/review-gate.example.json), and enforce the same checks with GitHub branch protection/rulesets because aliases and unrelated custom merge tools are outside a local text hook's observable scope. Self-check: `python3 hooks/pretooluse.py --check`.
 
 ## Install Options
 
@@ -237,7 +238,7 @@ The hook distinguishes orchestrator from subagent via the `agent_id` field in ho
 ./install.ps1 -Copy      # Copy instead
 ```
 
-> **Windows gap:** `install.ps1` does not yet register the enforcement hook, install the `persona-reviewer` agent definition, or support `--project`. Skills and the CLAUDE.md orchestration block install fine.
+> **Windows gap:** `install.ps1` registers the Codex CLI enforcement hook, but does not yet register the Claude Code hook, install the `persona-reviewer` agent definition, or support `--project`.
 
 **Uninstall:**
 ```bash
@@ -252,15 +253,18 @@ If you prefer to copy specific skills:
 
 ```bash
 mkdir -p ~/.claude/skills
+mkdir -p ~/.agents/skills
 cp -R _shared ~/.claude/skills/_shared
 cp -R security-engineer ~/.claude/skills/security-engineer
+cp -R _shared ~/.agents/skills/_shared
+cp -R security-engineer ~/.agents/skills/security-engineer
 # ... copy whichever skills you want
 mkdir -p ~/retros
 ```
 
 ### Project-Specific Install
 
-To install for a single project instead of globally, copy into your project's `.claude/skills/` directory.
+To install for a single project instead of globally, copy into both `.claude/skills/` and `.agents/skills/`.
 
 ## Versioning & Rollback
 
@@ -273,13 +277,13 @@ grep -E "^name:|^version:" ~/.claude/skills/*/SKILL.md
 
 **Update to latest** (symlink installs pick up changes automatically):
 ```bash
-cd /path/to/claude-agent-dev-team
+cd /path/to/ai-agent-dev-team
 git pull
 ```
 
 **Pin to a specific version** (or roll back):
 ```bash
-cd /path/to/claude-agent-dev-team
+cd /path/to/ai-agent-dev-team
 git checkout v0.2.0    # or any tag
 # Symlink installs now resolve to that tag's content
 ```
@@ -535,7 +539,7 @@ Follow the pattern established by existing personas:
 ## Project Structure
 
 ```
-claude-agent-dev-team/
+ai-agent-dev-team/
 ├── _shared/
 │   ├── claude-md-project-template.md # Project CLAUDE.md block template (written by /onboard)
 │   ├── conflict-resolution.md       # Conflict resolution protocol
@@ -546,7 +550,7 @@ claude-agent-dev-team/
 ├── agents/
 │   └── persona-reviewer.md          # Read-only agent type for review-mode dispatch (no Edit/Write) — installed to ~/.claude/agents/
 ├── hooks/
-│   └── pretooluse.py                # PreToolUse enforcement dispatcher (see Enforcement Hooks) — registered in settings.json by install.sh
+│   └── pretooluse.py                # Shared PreToolUse dispatcher — Claude settings.json + Codex hooks.json
 ├── security-engineer/
 │   ├── SKILL.md                     # Full persona — Security Engineer (protector)
 │   └── identity.md                  # Condensed identity for triage

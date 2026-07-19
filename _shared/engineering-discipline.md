@@ -90,6 +90,8 @@ Three field-proven watch failures:
 - **Watchers must not match themselves.** A `pgrep -f`/`pkill -f` pattern that appears in the watcher's own command line is a guaranteed deadlock (two watchers hung forever on each other). Use a pattern that cannot occur in the invoking command, or filter out your own PID.
 - **No arbitrary timeouts on known-long gates.** Wrapping a 10-minute test suite in a 590-second timeout is self-sabotage. If the gate's duration is known, the timeout exceeds it or is omitted.
 
+Ship and verification briefs carry the mandatory wording from orchestration §"Ship-authorization split." Its operational contract is: foreground/synchronous waits, bounded polling intervals, and a terminal result plus final report in the same turn.
+
 ### The Environment Is Part of the Gate
 
 A gate run under the wrong interpreter or toolchain proves nothing — 9 tests "failing" on a stale ambient library reads as a regression until someone notices `.venv/` was one `ls` away. Before running any verification gate, check for and use the project-local environment (`.venv/bin/python`, the repo's pinned node via `fnm`/`nvm`, worktree bootstrap scripts); never assume ambient tooling matches the project.

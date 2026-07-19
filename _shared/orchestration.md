@@ -10,7 +10,7 @@ Skills define each persona's scope. The orchestrator identifies which persona ow
 
 The value of the persona firewall is consistency, not efficiency per change. A small exception becomes precedent for a larger one.
 
-The mechanically decidable subset of these rules is also hook-enforced (`hooks/pretooluse.py`, registered by install.sh): orchestrator file edits in onboarded projects, ceremonies without `COMPONENTS.md`, subagent bead state transitions, and unreferenced commits in beads repos are denied at the tool-call layer. A hook denial citing these rules is authoritative — dispatch instead of working around it (e.g., via Bash file writes, which the hook cannot see).
+The mechanically decidable subset of these rules is also hook-enforced (`hooks/pretooluse.py`, registered by install.sh for Claude Code and Codex CLI): orchestrator file edits in onboarded projects, ceremonies without `COMPONENTS.md`, subagent bead state transitions, and unreferenced commits in beads repos are denied at the tool-call layer. Codex applies the edit, Bash, bead, and commit guards; its skill activation is not a tool call, so the ceremony gate remains instruction-enforced there. A hook denial citing these rules is authoritative — dispatch instead of working around it.
 
 ### What the orchestrator does
 
@@ -217,6 +217,8 @@ If unsure which case applies, the 1-line clarification is always safe and costs 
 
 "Queued pending a PO decision" means *nothing runs* — not "runs on a guess." No agent may be dispatched against a path whose a/b/c decision is still open, and a design-fork question the orchestrator itself flagged blocks the build steps that depend on it until answered. Work that is genuinely independent of the open decision may proceed; the dependent path may not. A later catch-all ("go," "do the rest") does not silently resolve the fork — re-surface it.
 
+Implementation briefs for user-visible defaults, thresholds, navigation, removal, or behavior cite the PO decision or approved UX decision that selected it. No citation means the decision is still open and dispatch is blocked; the implementer does not choose a value or interaction to make the brief executable.
+
 ### Irreversible follow-on actions state their authorization inline
 
 When a decision option implies a later irreversible action (merge, deploy, delete, publish), the option text states that action's authorization status inline: "(a) polish, then I merge" is a different option than "(a) polish, then hold for your merge call." An unanswered decision block must never convert to consent via momentum — the field incident this rule comes from was a merge executed off "Polish before merge" plus subsequent unrelated messages. The mechanical backstop is the merge ask-gate (installer-managed `ask` permission on merge-shaped commands); this rule is the prose half.
@@ -236,6 +238,10 @@ Corollary (PO-established): defects in the persona system's own hooks and skills
 ### Ship-authorization split
 
 Engineers work through commit; the orchestrator — whose context holds the PO's actual words — does push, PR, and merge. Never relay PO consent into a subagent brief ("the PO said yes"): permission classifiers correctly refuse relayed consent, and three classifier walls in one session proved the pattern structurally cannot work. When a ship step genuinely must run inside a subagent, the brief instructs it to wait synchronously on any gate or check it arms — background watches die at turn-end (see engineering-discipline §"Background Processes Stay Observable").
+
+Every ship or verification brief MUST include this verbatim:
+
+> "Keep every wait in the foreground and synchronous. Poll each gate at a bounded interval until it reaches a terminal state; do not arm a background watcher and end the turn. Return the final gate result and completion report in this same turn."
 
 ## Findings From Personas Are Notes, Not Beads
 
@@ -294,7 +300,11 @@ Before submitting new review findings on a PR that has prior review rounds, fetc
 
 ## Every Merged PR Gets a Review Pass
 
-Gates verify; reviews review. Every PR merged in a session gets a dedicated code-reviewer dispatch before merge, or an explicit PO waiver for that PR. An independent gate re-run is not a substitute: gates prove the tests pass — they don't review whether the tests pin the right contract, whether chosen values (limits, ceilings, timeouts) are right, or whether new parsing has injection-shaped edge cases. Batch momentum is the documented failure mode: six PRs across two sessions merged on engineer report plus gate re-runs alone, zero review dispatches, flagged by the code-reviewer persona both times.
+Gates verify; reviews review. Every PR merged in a session gets a dedicated code-reviewer dispatch before merge. An independent gate re-run is not a substitute: gates prove the tests pass — they don't review whether the tests pin the right contract, whether chosen values (limits, ceilings, timeouts) are right, or whether new parsing has injection-shaped edge cases. Batch momentum is the documented failure mode: six PRs across two sessions merged on engineer report plus gate re-runs alone, zero review dispatches, flagged by the code-reviewer persona both times.
+
+The merge hook validates provider-authoritative GitHub check runs for the canonical repository and immutable PR head. Supported merges use the literal ask-gate-compatible form `gh pr merge <number> ... --match-head-commit <full-40-character-sha>`; direct `git merge`, alternate executable paths, wrappers, compound commands, and dynamic shell substitutions are denied because the hook cannot bind them safely to a PR. The repository must carry `.agents/review-gate.json`, following [`review-gate.example.json`](./review-gate.example.json), which pins the GitHub hostname, canonical `owner/repo`, and trusted GitHub App id+slug for each required check. Missing configuration or unavailable, incomplete, ambiguous, untrusted, stale, or incorrectly typed provider state fails closed. Provider calls share an 18-second total deadline with a 4-second per-call cap, leaving margin under the host's 30-second hook timeout.
+
+The required checks are `ai-team/code-review` and `ai-team/data-integrity-classification`. Both must be successful check runs from their configured trusted apps on the exact PR head. The classification check communicates its machine-readable result through `output.title`, exactly `classification:other` or `classification:data-integrity`; malformed output blocks. This hook is a local defense-in-depth check over direct merge commands, not a complete shell interpreter: aliases or custom tools with unrelated names are outside its observable scope, so GitHub branch protection/rulesets requiring these same trusted checks are the authoritative merge boundary. The hook remains additive to the installer's live merge-authorization ask-gate, never a replacement for it.
 
 Never waivable, even by batch momentum: hook/enforcement code and security-adjacent diffs — anything that parses command text or resolves filesystem paths to make an allow/deny decision — which additionally get the security-engineer lens (a version-guard's path-candidate parsing shipped with no adversarial review of whether a crafted command could point validation at an attacker-chosen tree).
 
@@ -309,6 +319,8 @@ When the gate can't be re-run independently (hardware-attached test, network-bou
 ## Data-Integrity Changes Get the DBA
 
 Schema, query, transaction-semantics, and bulk-write changes get the database-engineer as an additional required reviewer — not as an optional third opinion. Twice in the field, the code-reviewer approved what the DBA correctly blocked (a rollback-prior-but-commit-tail hybrid with zero coverage; a failure cascade only visible by tracing past the first-order error). Corollary for all reviewers: a severity rating requires tracing the full failure-propagation path — "self-consistent at this layer" is not "correct." For data-integrity-class kickback fixes, run a full second review round, not a relaxed diff-only re-check.
+
+When the provider classification is `data-integrity`, the hook also requires a successful `ai-team/dba-review` check from its configured trusted app on the same immutable head.
 
 ## Definition of Done for User-Reported Bugs
 

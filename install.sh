@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Claude Agent Dev Team — Installer
-# Default: symlinks skills into ~/.claude/skills/ so git pull updates automatically
+# AI Agent Dev Team — Claude Code + Codex Installer
+# Default: symlinks skills into ~/.claude/skills/ and ~/.agents/skills/
 # --copy: copy instead of symlink (for customization)
 # --project <dir>: install into <dir>/.claude instead of ~/.claude (forces copy mode)
 # --local: with --project, register the hook in settings.local.json (personal, not committed)
@@ -18,7 +18,7 @@ usage() {
   echo "Options:"
   echo "  (default)        Symlink skills into ~/.claude/skills/ (git pull updates automatically)"
   echo "  --copy           Copy skills instead of symlink (for customization)"
-  echo "  --project <dir>  Install into <dir>/.claude instead of ~/.claude — the team is"
+  echo "  --project <dir>  Install into <dir>/.claude and <dir>/.agents instead of globally —"
   echo "                   available only in that project. Forces copy mode so the install"
   echo "                   is self-contained and committable (teammates get it via git)."
   echo "  --local          With --project: register the enforcement hook in"
@@ -69,6 +69,12 @@ if [ -n "$PROJECT_DIR" ]; then
   MODE="copy"
   CLAUDE_ROOT="${PROJECT_DIR}/.claude"
   CLAUDE_MD="${PROJECT_DIR}/CLAUDE.md"
+  CODEX_SKILLS_DIR="${PROJECT_DIR}/.agents/skills"
+  CODEX_MD="${PROJECT_DIR}/AGENTS.md"
+  CODEX_ROOT="${PROJECT_DIR}/.codex"
+  CODEX_HOOKS_JSON="${PROJECT_DIR}/.codex/hooks.json"
+  CODEX_HOOK_CMD='python3 "$(git rev-parse --show-toplevel)/.codex/hooks/pretooluse.py"'
+  CODEX_ORCH_PATH=".agents/skills/_shared/orchestration.md"
   ORCH_PATH=".claude/skills/_shared/orchestration.md"
   # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook time, so the
   # committed settings entry has no user-specific absolute path in it
@@ -81,6 +87,12 @@ if [ -n "$PROJECT_DIR" ]; then
 else
   CLAUDE_ROOT="${HOME}/.claude"
   CLAUDE_MD="${CLAUDE_ROOT}/CLAUDE.md"
+  CODEX_SKILLS_DIR="${HOME}/.agents/skills"
+  CODEX_ROOT="${CODEX_HOME:-${HOME}/.codex}"
+  CODEX_MD="${CODEX_ROOT}/AGENTS.md"
+  CODEX_HOOKS_JSON="${CODEX_ROOT}/hooks.json"
+  CODEX_HOOK_CMD="python3 \"${REPO_DIR}/hooks/pretooluse.py\""
+  CODEX_ORCH_PATH="~/.agents/skills/_shared/orchestration.md"
   ORCH_PATH="~/.claude/skills/_shared/orchestration.md"
   HOOK_CMD="python3 \"${REPO_DIR}/hooks/pretooluse.py\""
   SETTINGS_JSON="${CLAUDE_ROOT}/settings.json"
@@ -116,14 +128,15 @@ SKILLS=(
   release-check
 )
 
-echo "Installing Claude Agent Dev Team skills..."
+echo "Installing AI Agent Dev Team skills for Claude Code and Codex..."
 echo "  Mode: ${MODE}"
 echo "  From: ${REPO_DIR}"
-echo "  To:   ${SKILLS_DIR}"
+echo "  Claude: ${SKILLS_DIR}"
+echo "  Codex:  ${CODEX_SKILLS_DIR}"
 echo ""
 
 # Create skills directory if it doesn't exist
-mkdir -p "$SKILLS_DIR"
+mkdir -p "$SKILLS_DIR" "$CODEX_SKILLS_DIR"
 
 # Create retro directory (the retro skill writes to ~/retros regardless of install scope)
 mkdir -p "$RETRO_DIR"
@@ -133,9 +146,10 @@ installed=0
 skipped=0
 updated=0
 
-for skill in "${SKILLS[@]}"; do
+for destination in "$SKILLS_DIR" "$CODEX_SKILLS_DIR"; do
+  for skill in "${SKILLS[@]}"; do
   source="${REPO_DIR}/${skill}"
-  target="${SKILLS_DIR}/${skill}"
+  target="${destination}/${skill}"
 
   if [ ! -d "$source" ]; then
     echo "  WARN: ${skill} not found in repo, skipping"
@@ -170,12 +184,13 @@ for skill in "${SKILLS[@]}"; do
 
   if [ "$MODE" = "symlink" ]; then
     ln -s "$source" "$target"
-    echo "  LINK: ${skill}"
+    echo "  LINK: ${target}"
   else
     cp -R "$source" "$target"
-    echo "  COPY: ${skill}"
+    echo "  COPY: ${target}"
   fi
   installed=$((installed + 1))
+  done
 done
 
 echo ""
@@ -209,41 +224,55 @@ echo ""
 
 # --- Hook script (project installs get their own copy; global runs from the repo) ---
 if [ -n "$PROJECT_DIR" ]; then
-  mkdir -p "${CLAUDE_ROOT}/hooks"
+  mkdir -p "${CLAUDE_ROOT}/hooks" "${CODEX_ROOT}/hooks"
   cp "${REPO_DIR}/hooks/pretooluse.py" "${CLAUDE_ROOT}/hooks/pretooluse.py"
-  echo "  COPY: hooks/pretooluse.py"
+  cp "${REPO_DIR}/hooks/pretooluse.py" "${CODEX_ROOT}/hooks/pretooluse.py"
+  echo "  COPY: .claude/hooks/pretooluse.py"
+  echo "  COPY: .codex/hooks/pretooluse.py"
 fi
 
-# --- Manage orchestration block in CLAUDE.md ---
-MARKER_START="# --- Claude Agent Dev Team (managed) ---"
-MARKER_END="# --- End Claude Agent Dev Team ---"
+# --- Manage orchestration blocks in CLAUDE.md and AGENTS.md ---
+MARKER_START="# --- AI Agent Dev Team (managed) ---"
+MARKER_END="# --- End AI Agent Dev Team ---"
+LEGACY_MARKER_START="# --- Claude Agent Dev Team (managed) ---"
+LEGACY_MARKER_END="# --- End Claude Agent Dev Team ---"
 
-BLOCK="${MARKER_START}
+manage_instructions_file() {
+  local instructions_file="$1"
+  local orchestration_path="$2"
+  local product="$3"
+  local block="${MARKER_START}
 # Orchestration discipline — read before spawning agents or doing implementation work.
 # This file is managed by install.sh. To update, re-run the installer.
-Read ${ORCH_PATH} before spawning any agent or doing any implementation work.
+Read ${orchestration_path} before spawning any agent or doing any implementation work.
 ${MARKER_END}"
 
-if [ -f "$CLAUDE_MD" ] && grep -qF "$MARKER_START" "$CLAUDE_MD"; then
+if [ -f "$instructions_file" ] &&
+   { grep -qF "$MARKER_START" "$instructions_file" || grep -qF "$LEGACY_MARKER_START" "$instructions_file"; }; then
   # Remove existing managed block first (idempotent update)
   awk '
-    /^# --- Claude Agent Dev Team \(managed\) ---$/ { skip=1; next }
-    skip && /^# --- End Claude Agent Dev Team ---$/ { skip=0; next }
+    /^# --- (AI|Claude) Agent Dev Team \(managed\) ---$/ { skip=1; next }
+    skip && /^# --- End (AI|Claude) Agent Dev Team ---$/ { skip=0; next }
     !skip { print }
-  ' "$CLAUDE_MD" > "${CLAUDE_MD}.tmp" && mv "${CLAUDE_MD}.tmp" "$CLAUDE_MD"
+  ' "$instructions_file" > "${instructions_file}.tmp" && mv "${instructions_file}.tmp" "$instructions_file"
 fi
 
 # Append managed block (fresh install or after removing old block)
-if [ -f "$CLAUDE_MD" ] && [ -s "$CLAUDE_MD" ]; then
+mkdir -p "$(dirname "$instructions_file")"
+if [ -f "$instructions_file" ] && [ -s "$instructions_file" ]; then
   # Add a blank line before the block if file doesn't end with one
-  [ "$(tail -c 1 "$CLAUDE_MD")" != "" ] && echo "" >> "$CLAUDE_MD"
-  echo "" >> "$CLAUDE_MD"
+  [ "$(tail -c 1 "$instructions_file")" != "" ] && echo "" >> "$instructions_file"
+  echo "" >> "$instructions_file"
 fi
-echo "$BLOCK" >> "$CLAUDE_MD"
+echo "$block" >> "$instructions_file"
 
-if grep -qF "$MARKER_START" "$CLAUDE_MD"; then
-  echo "  CLAUDE.md: orchestration block in ${CLAUDE_MD}"
+if grep -qF "$MARKER_START" "$instructions_file"; then
+  echo "  ${product}: orchestration block in ${instructions_file}"
 fi
+}
+
+manage_instructions_file "$CLAUDE_MD" "$ORCH_PATH" "Claude Code"
+manage_instructions_file "$CODEX_MD" "$CODEX_ORCH_PATH" "Codex"
 
 # --- Register PreToolUse enforcement hook ---
 python3 - "$SETTINGS_JSON" "$HOOK_CMD" <<'PY'
@@ -269,6 +298,8 @@ ask = settings.setdefault("permissions", {}).setdefault("ask", [])
 for rule in ("Bash(gh pr merge*)", "Bash(git merge*)"):
     if rule not in ask:
         ask.append(rule)
+required_ask = {"Bash(gh pr merge*)", "Bash(git merge*)"}
+assert required_ask.issubset(ask), "merge ask-gate registration failed"
 
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
@@ -276,6 +307,36 @@ with open(path, "w") as f:
     f.write("\n")
 print(f"  settings: PreToolUse enforcement hook in {path}")
 print(f"  settings: merge ask-gate (gh pr merge / git merge require live approval)")
+PY
+
+# --- Register Codex PreToolUse enforcement hook ---
+python3 - "$CODEX_HOOKS_JSON" "$CODEX_HOOK_CMD" <<'PY'
+import json, os, sys
+
+path, cmd = sys.argv[1], sys.argv[2]
+config = {}
+if os.path.isfile(path):
+    with open(path) as f:
+        config = json.load(f)
+
+entries = config.setdefault("hooks", {}).setdefault("PreToolUse", [])
+entries[:] = [e for e in entries if "pretooluse.py" not in json.dumps(e)]
+entries.append({
+    "matcher": "Bash|Edit|Write|apply_patch|Skill",
+    "hooks": [{
+        "type": "command",
+        "command": cmd,
+        "commandWindows": cmd.replace("python3 ", "py -3 ", 1),
+        "timeout": 30,
+        "statusMessage": "Enforcing AI Agent Dev Team policy",
+    }],
+})
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+print(f"  Codex hooks: PreToolUse enforcement in {path}")
 PY
 
 echo ""
@@ -297,8 +358,12 @@ if [ -n "$PROJECT_DIR" ]; then
     echo "  .claude/agents/"
     echo "  .claude/hooks/"
     echo "  .claude/settings.local.json"
+    echo "  .agents/skills/"
+    echo "  .codex/hooks/"
+    echo "  .codex/hooks.json"
+    echo "  AGENTS.md (only if it contains no shared project guidance)"
   else
-    echo "Commit .claude/ and CLAUDE.md to share the team with everyone who clones the project."
+    echo "Commit .claude/, .agents/, CLAUDE.md, and AGENTS.md to share the team."
   fi
 elif [ "$MODE" = "symlink" ]; then
   echo "Skills are symlinked — run 'git pull' in this repo to update them."

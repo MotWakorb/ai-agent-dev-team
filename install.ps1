@@ -1,9 +1,9 @@
 #Requires -Version 5.0
 <#
 .SYNOPSIS
-    Claude Agent Dev Team — PowerShell Installer
+    AI Agent Dev Team — Claude Code + Codex PowerShell Installer
 .DESCRIPTION
-    Symlinks skills into ~/.claude/skills/ so git pull updates automatically.
+    Symlinks skills into ~/.claude/skills/ and ~/.agents/skills/ so git pull updates automatically.
     Use -Copy to copy instead of symlink (for customization).
 .PARAMETER Copy
     Copy skills instead of symlink (for customization without affecting the repo)
@@ -20,7 +20,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $RepoDir = $PSScriptRoot
-$SkillsDir = Join-Path (Join-Path $HOME '.claude') 'skills'
+$ClaudeSkillsDir = Join-Path (Join-Path $HOME '.claude') 'skills'
+$CodexSkillsDir = Join-Path (Join-Path $HOME '.agents') 'skills'
+$SkillDestinations = @($ClaudeSkillsDir, $CodexSkillsDir)
 $RetroDir = Join-Path $HOME 'retros'
 
 $Skills = @(
@@ -70,21 +72,25 @@ function Get-SymlinkTarget {
 
 if ($Copy) { $Mode = 'copy' } else { $Mode = 'symlink' }
 
-Write-Host 'Installing Claude Agent Dev Team skills...'
+Write-Host 'Installing AI Agent Dev Team skills for Claude Code and Codex...'
 Write-Host "  Mode: $Mode"
 Write-Host "  From: $RepoDir"
-Write-Host "  To:   $SkillsDir"
+Write-Host "  Claude: $ClaudeSkillsDir"
+Write-Host "  Codex:  $CodexSkillsDir"
 Write-Host ''
 
 # Create directories
-if (-not (Test-Path $SkillsDir)) { New-Item -ItemType Directory -Path $SkillsDir -Force | Out-Null }
+foreach ($destination in $SkillDestinations) {
+    if (-not (Test-Path $destination)) { New-Item -ItemType Directory -Path $destination -Force | Out-Null }
+}
 if (-not (Test-Path $RetroDir)) { New-Item -ItemType Directory -Path $RetroDir -Force | Out-Null }
 
 $installed = 0
 $skipped = 0
 $updated = 0
 
-foreach ($skill in $Skills) {
+foreach ($SkillsDir in $SkillDestinations) {
+  foreach ($skill in $Skills) {
     $source = Join-Path $RepoDir $skill
     $target = Join-Path $SkillsDir $skill
 
@@ -131,12 +137,15 @@ foreach ($skill in $Skills) {
         Write-Host "  COPY: $skill"
     }
     $installed++
+  }
 }
 
 # --- Manage ~/.claude/CLAUDE.md orchestration block ---
 $ClaudeMd = Join-Path (Join-Path $HOME '.claude') 'CLAUDE.md'
-$MarkerStart = '# --- Claude Agent Dev Team (managed) ---'
-$MarkerEnd = '# --- End Claude Agent Dev Team ---'
+$MarkerStart = '# --- AI Agent Dev Team (managed) ---'
+$MarkerEnd = '# --- End AI Agent Dev Team ---'
+$LegacyMarkerStart = '# --- Claude Agent Dev Team (managed) ---'
+$LegacyMarkerEnd = '# --- End Claude Agent Dev Team ---'
 
 $Block = @"
 $MarkerStart
@@ -146,6 +155,10 @@ Read ~/.claude/skills/_shared/orchestration.md before spawning any agent or doin
 $MarkerEnd
 "@
 
+if (Test-Path $ClaudeMd) {
+    $content = (Get-Content $ClaudeMd -Raw).Replace($LegacyMarkerStart, $MarkerStart).Replace($LegacyMarkerEnd, $MarkerEnd)
+    Set-Content -Path $ClaudeMd -Value $content -NoNewline
+}
 if ((Test-Path $ClaudeMd) -and (Get-Content $ClaudeMd -Raw) -match [regex]::Escape($MarkerStart)) {
     # Replace existing managed block (idempotent update)
     $content = Get-Content $ClaudeMd -Raw
@@ -166,6 +179,70 @@ else {
     Write-Host "  CLAUDE.md: added orchestration block to $ClaudeMd"
 }
 
+# --- Manage ~/.codex/AGENTS.md orchestration block ---
+$CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
+$AgentsMd = Join-Path $CodexHome 'AGENTS.md'
+$CodexBlock = @"
+$MarkerStart
+# Orchestration discipline - read before spawning agents or doing implementation work.
+# This file is managed by install.ps1. To update, re-run the installer.
+Read ~/.agents/skills/_shared/orchestration.md before spawning any agent or doing any implementation work.
+$MarkerEnd
+"@
+
+if (Test-Path $AgentsMd) {
+    $content = (Get-Content $AgentsMd -Raw).Replace($LegacyMarkerStart, $MarkerStart).Replace($LegacyMarkerEnd, $MarkerEnd)
+    Set-Content -Path $AgentsMd -Value $content -NoNewline
+}
+if ((Test-Path $AgentsMd) -and (Get-Content $AgentsMd -Raw) -match [regex]::Escape($MarkerStart)) {
+    $content = Get-Content $AgentsMd -Raw
+    $pattern = [regex]::Escape($MarkerStart) + '[\s\S]*?' + [regex]::Escape($MarkerEnd)
+    $content = [regex]::Replace($content, $pattern, $CodexBlock)
+    Set-Content -Path $AgentsMd -Value $content -NoNewline
+    Write-Host "  AGENTS.md: updated managed block"
+}
+else {
+    if ((Test-Path $AgentsMd) -and (Get-Content $AgentsMd -Raw).Length -gt 0) {
+        Add-Content -Path $AgentsMd -Value "`n"
+    }
+    if (-not (Test-Path $CodexHome)) { New-Item -ItemType Directory -Path $CodexHome -Force | Out-Null }
+    Add-Content -Path $AgentsMd -Value $CodexBlock
+    Write-Host "  AGENTS.md: added orchestration block to $AgentsMd"
+}
+
+# --- Register Codex PreToolUse enforcement hook ---
+$CodexHooksJson = Join-Path $CodexHome 'hooks.json'
+$CodexHookCommand = 'python3 "' + (Join-Path $RepoDir 'hooks/pretooluse.py') + '"'
+$CodexHookCommandWindows = 'py -3 "' + (Join-Path $RepoDir 'hooks/pretooluse.py') + '"'
+if (Test-Path $CodexHooksJson) {
+    $CodexHooks = Get-Content $CodexHooksJson -Raw | ConvertFrom-Json
+}
+else {
+    $CodexHooks = [pscustomobject]@{}
+}
+if (-not $CodexHooks.hooks) {
+    $CodexHooks | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
+}
+$existingPreToolUse = @()
+if ($CodexHooks.hooks.PreToolUse) {
+    $existingPreToolUse = @($CodexHooks.hooks.PreToolUse | Where-Object {
+        ($_ | ConvertTo-Json -Depth 10) -notmatch 'pretooluse\.py'
+    })
+}
+$existingPreToolUse += [pscustomobject]@{
+    matcher = 'Bash|Edit|Write|apply_patch|Skill'
+    hooks = @([pscustomobject]@{
+        type = 'command'
+        command = $CodexHookCommand
+        commandWindows = $CodexHookCommandWindows
+        timeout = 30
+        statusMessage = 'Enforcing AI Agent Dev Team policy'
+    })
+}
+$CodexHooks.hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue $existingPreToolUse -Force
+$CodexHooks | ConvertTo-Json -Depth 10 | Set-Content $CodexHooksJson
+Write-Host "  Codex hooks: PreToolUse enforcement in $CodexHooksJson"
+
 Write-Host ''
 Write-Host 'Done!'
 Write-Host "  Installed: $installed"
@@ -177,7 +254,7 @@ Write-Host ''
 if ($Mode -eq 'symlink') {
     Write-Host "Skills are symlinked - run 'git pull' in this repo to update them."
     Write-Host 'To customize a skill without affecting the repo, copy it manually:'
-    Write-Host "  Copy-Item -Recurse $SkillsDir\<skill> $SkillsDir\<skill>-custom"
+    Write-Host "  Copy-Item -Recurse $ClaudeSkillsDir\<skill> $ClaudeSkillsDir\<skill>-custom"
     Write-Host ''
     Write-Host 'NOTE: On Windows, creating symlinks may require running as Administrator'
     Write-Host 'or enabling Developer Mode (Settings > Update & Security > For developers).'

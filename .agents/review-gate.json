@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "github_repository": "MotWakorb/ai-agent-dev-team",
+  "github_hostname": "github.com",
+  "required_check_apps": {
+    "ai-team/code-review": {
+      "id": 15368,
+      "slug": "github-actions"
+    },
+    "ai-team/data-integrity-classification": {
+      "id": 15368,
+      "slug": "github-actions"
+    },
+    "ai-team/dba-review": {
+      "id": 15368,
+      "slug": "github-actions"
+    }
+  }
+}
