@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Claude Agent Dev Team — Claude Code + Codex Installer
+# AI Agent Dev Team — Claude Code + Codex Installer
 # Default: symlinks skills into ~/.claude/skills/ and ~/.agents/skills/
 # --copy: copy instead of symlink (for customization)
 # --project <dir>: install into <dir>/.claude instead of ~/.claude (forces copy mode)
@@ -122,7 +122,7 @@ SKILLS=(
   release-check
 )
 
-echo "Installing Claude Agent Dev Team skills for Claude Code and Codex..."
+echo "Installing AI Agent Dev Team skills for Claude Code and Codex..."
 echo "  Mode: ${MODE}"
 echo "  From: ${REPO_DIR}"
 echo "  Claude: ${SKILLS_DIR}"
@@ -224,8 +224,10 @@ if [ -n "$PROJECT_DIR" ]; then
 fi
 
 # --- Manage orchestration blocks in CLAUDE.md and AGENTS.md ---
-MARKER_START="# --- Claude Agent Dev Team (managed) ---"
-MARKER_END="# --- End Claude Agent Dev Team ---"
+MARKER_START="# --- AI Agent Dev Team (managed) ---"
+MARKER_END="# --- End AI Agent Dev Team ---"
+LEGACY_MARKER_START="# --- Claude Agent Dev Team (managed) ---"
+LEGACY_MARKER_END="# --- End Claude Agent Dev Team ---"
 
 manage_instructions_file() {
   local instructions_file="$1"
@@ -237,11 +239,12 @@ manage_instructions_file() {
 Read ${orchestration_path} before spawning any agent or doing any implementation work.
 ${MARKER_END}"
 
-if [ -f "$instructions_file" ] && grep -qF "$MARKER_START" "$instructions_file"; then
+if [ -f "$instructions_file" ] &&
+   { grep -qF "$MARKER_START" "$instructions_file" || grep -qF "$LEGACY_MARKER_START" "$instructions_file"; }; then
   # Remove existing managed block first (idempotent update)
   awk '
-    /^# --- Claude Agent Dev Team \(managed\) ---$/ { skip=1; next }
-    skip && /^# --- End Claude Agent Dev Team ---$/ { skip=0; next }
+    /^# --- (AI|Claude) Agent Dev Team \(managed\) ---$/ { skip=1; next }
+    skip && /^# --- End (AI|Claude) Agent Dev Team ---$/ { skip=0; next }
     !skip { print }
   ' "$instructions_file" > "${instructions_file}.tmp" && mv "${instructions_file}.tmp" "$instructions_file"
 fi

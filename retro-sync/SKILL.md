@@ -22,7 +22,7 @@ Push local retros in `~/retros/` to the shared learning corpus: `https://github.
 2. **Project map** — `~/.claude/retro-project-map.txt` holds stable pseudonyms, one `real-name=pseudonym` per line:
    ```
    acme-billing=project-a
-   claude-agent-dev-team=project-b
+   ai-agent-dev-team=project-b
    ```
    Check that every project referenced by the retros being synced has an entry. If one is missing, assign the next unused `project-<letter>` and append it. The map is local and private — never commit it, never mention real names in the retro repo. Ceiling: the map is per-machine; keep it consistent across your machines by copying it once (it changes rarely).
 

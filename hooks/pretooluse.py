@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse enforcement dispatcher for the Claude Agent Dev Team.
+"""PreToolUse enforcement dispatcher for the AI Agent Dev Team.
 
 Registered in ~/.claude/settings.json by install.sh (matcher:
 Edit|Write|NotebookEdit|Bash|Skill). Converts the mechanically decidable

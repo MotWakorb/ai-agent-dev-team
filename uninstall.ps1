@@ -1,7 +1,7 @@
 #Requires -Version 5.0
 <#
 .SYNOPSIS
-    Claude Agent Dev Team — Claude Code + Codex PowerShell Uninstaller
+    AI Agent Dev Team — Claude Code + Codex PowerShell Uninstaller
 .DESCRIPTION
     Removes skills installed by install.ps1 from Claude Code and Codex.
 .PARAMETER Yes
@@ -58,7 +58,7 @@ foreach ($SkillsDir in $SkillDestinations) {
 }
 
 if ($found -eq 0) {
-    Write-Host "Nothing to uninstall - no Claude Agent Dev Team skills found in $SkillsDir"
+    Write-Host "Nothing to uninstall - no AI Agent Dev Team skills found in $SkillsDir"
     return
 }
 
@@ -66,7 +66,7 @@ Write-Host "Found $found installed skill(s) in $SkillsDir"
 Write-Host ''
 
 if (-not $Yes) {
-    $confirm = Read-Host 'Remove all Claude Agent Dev Team skills? [y/N]'
+    $confirm = Read-Host 'Remove all AI Agent Dev Team skills? [y/N]'
     if ($confirm -notmatch '^[Yy]$') {
         Write-Host 'Aborted.'
         return
@@ -74,7 +74,7 @@ if (-not $Yes) {
 }
 
 Write-Host ''
-Write-Host 'Uninstalling Claude Agent Dev Team skills from Claude Code and Codex...'
+Write-Host 'Uninstalling AI Agent Dev Team skills from Claude Code and Codex...'
 $removed = 0
 foreach ($SkillsDir in $SkillDestinations) {
     foreach ($skill in $Skills) {
@@ -89,9 +89,15 @@ foreach ($SkillsDir in $SkillDestinations) {
 
 # --- Remove managed block from ~/.claude/CLAUDE.md ---
 $ClaudeMd = Join-Path (Join-Path $HOME '.claude') 'CLAUDE.md'
-$MarkerStart = '# --- Claude Agent Dev Team (managed) ---'
-$MarkerEnd = '# --- End Claude Agent Dev Team ---'
+$MarkerStart = '# --- AI Agent Dev Team (managed) ---'
+$MarkerEnd = '# --- End AI Agent Dev Team ---'
+$LegacyMarkerStart = '# --- Claude Agent Dev Team (managed) ---'
+$LegacyMarkerEnd = '# --- End Claude Agent Dev Team ---'
 
+if (Test-Path $ClaudeMd) {
+    $content = (Get-Content $ClaudeMd -Raw).Replace($LegacyMarkerStart, $MarkerStart).Replace($LegacyMarkerEnd, $MarkerEnd)
+    Set-Content -Path $ClaudeMd -Value $content -NoNewline
+}
 if ((Test-Path $ClaudeMd) -and (Get-Content $ClaudeMd -Raw) -match [regex]::Escape($MarkerStart)) {
     $content = Get-Content $ClaudeMd -Raw
     $pattern = [regex]::Escape($MarkerStart) + '[\s\S]*?' + [regex]::Escape($MarkerEnd)
@@ -109,6 +115,10 @@ if ((Test-Path $ClaudeMd) -and (Get-Content $ClaudeMd -Raw) -match [regex]::Esca
 # --- Remove managed block from ~/.codex/AGENTS.md ---
 $CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
 $AgentsMd = Join-Path $CodexHome 'AGENTS.md'
+if (Test-Path $AgentsMd) {
+    $content = (Get-Content $AgentsMd -Raw).Replace($LegacyMarkerStart, $MarkerStart).Replace($LegacyMarkerEnd, $MarkerEnd)
+    Set-Content -Path $AgentsMd -Value $content -NoNewline
+}
 if ((Test-Path $AgentsMd) -and (Get-Content $AgentsMd -Raw) -match [regex]::Escape($MarkerStart)) {
     $content = Get-Content $AgentsMd -Raw
     $pattern = [regex]::Escape($MarkerStart) + '[\s\S]*?' + [regex]::Escape($MarkerEnd)

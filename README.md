@@ -1,4 +1,4 @@
-# Claude Agent Dev Team
+# AI Agent Dev Team
 
 A set of Claude Code and Codex skills that simulate a full software development team with distinct professional personas. Each persona has domain expertise, professional biases, and the authority to disagree with the others. This is not a committee that politely agrees — it's a team that argues, commits, and ships.
 
@@ -6,15 +6,15 @@ A set of Claude Code and Codex skills that simulate a full software development 
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/MotWakorb/claude-agent-dev-team.git
-cd claude-agent-dev-team
+git clone https://github.com/MotWakorb/ai-agent-dev-team.git
+cd ai-agent-dev-team
 ./install.sh
 ```
 
 **Windows (PowerShell 5.1+):**
 ```powershell
-git clone https://github.com/MotWakorb/claude-agent-dev-team.git
-cd claude-agent-dev-team
+git clone https://github.com/MotWakorb/ai-agent-dev-team.git
+cd ai-agent-dev-team
 ./install.ps1
 ```
 
@@ -276,13 +276,13 @@ grep -E "^name:|^version:" ~/.claude/skills/*/SKILL.md
 
 **Update to latest** (symlink installs pick up changes automatically):
 ```bash
-cd /path/to/claude-agent-dev-team
+cd /path/to/ai-agent-dev-team
 git pull
 ```
 
 **Pin to a specific version** (or roll back):
 ```bash
-cd /path/to/claude-agent-dev-team
+cd /path/to/ai-agent-dev-team
 git checkout v0.2.0    # or any tag
 # Symlink installs now resolve to that tag's content
 ```
@@ -538,7 +538,7 @@ Follow the pattern established by existing personas:
 ## Project Structure
 
 ```
-claude-agent-dev-team/
+ai-agent-dev-team/
 ├── _shared/
 │   ├── claude-md-project-template.md # Project CLAUDE.md block template (written by /onboard)
 │   ├── conflict-resolution.md       # Conflict resolution protocol

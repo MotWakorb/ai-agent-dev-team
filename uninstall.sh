@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Claude Agent Dev Team — Claude Code + Codex Uninstaller
+# AI Agent Dev Team — Claude Code + Codex Uninstaller
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR=""
@@ -84,7 +84,7 @@ for destination in "$SKILLS_DIR" "$CODEX_SKILLS_DIR"; do
 done
 
 if [ "$found" -eq 0 ]; then
-  echo "Nothing to uninstall — no Claude Agent Dev Team skills found in ${SKILLS_DIR}"
+  echo "Nothing to uninstall — no AI Agent Dev Team skills found in ${SKILLS_DIR}"
   exit 0
 fi
 
@@ -92,7 +92,7 @@ echo "Found ${found} installed skill(s) in ${SKILLS_DIR}"
 echo ""
 
 if [ "$ASSUME_YES" -ne 1 ]; then
-  read -rp "Remove all Claude Agent Dev Team skills? [y/N] " confirm
+  read -rp "Remove all AI Agent Dev Team skills? [y/N] " confirm
   if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo "Aborted."
     exit 0
@@ -100,7 +100,7 @@ if [ "$ASSUME_YES" -ne 1 ]; then
 fi
 
 echo ""
-echo "Uninstalling Claude Agent Dev Team skills from Claude Code and Codex..."
+echo "Uninstalling AI Agent Dev Team skills from Claude Code and Codex..."
 removed=0
 for destination in "$SKILLS_DIR" "$CODEX_SKILLS_DIR"; do
   for skill in "${SKILLS[@]}"; do
@@ -131,14 +131,16 @@ if [ -n "$PROJECT_DIR" ] && [ -f "${CLAUDE_ROOT}/hooks/pretooluse.py" ]; then
 fi
 
 # --- Remove managed block from CLAUDE.md ---
-MARKER_START="# --- Claude Agent Dev Team (managed) ---"
-MARKER_END="# --- End Claude Agent Dev Team ---"
+MARKER_START="# --- AI Agent Dev Team (managed) ---"
+MARKER_END="# --- End AI Agent Dev Team ---"
+LEGACY_MARKER_START="# --- Claude Agent Dev Team (managed) ---"
 
 for instructions_file in "$CLAUDE_MD" "$CODEX_MD"; do
-  if [ -f "$instructions_file" ] && grep -qF "$MARKER_START" "$instructions_file"; then
-    awk -v start="$MARKER_START" -v end="$MARKER_END" '
-      $0 == start { skip=1; next }
-      skip && $0 == end { skip=0; next }
+  if [ -f "$instructions_file" ] &&
+     { grep -qF "$MARKER_START" "$instructions_file" || grep -qF "$LEGACY_MARKER_START" "$instructions_file"; }; then
+    awk '
+      /^# --- (AI|Claude) Agent Dev Team \(managed\) ---$/ { skip=1; next }
+      skip && /^# --- End (AI|Claude) Agent Dev Team ---$/ { skip=0; next }
       !skip { print }
     ' "$instructions_file" > "${instructions_file}.tmp" && mv "${instructions_file}.tmp" "$instructions_file"
     # Remove file if it's now empty (only whitespace)

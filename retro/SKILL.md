@@ -31,7 +31,7 @@ Write the retrospective to `~/retros/` named `YYYY-MM-DD-HH_(three-word-topic).m
 
 Retros are synced to a **public, multi-contributor** GitHub repo (see `retro-sync`) so everyone using these skills can learn from them. Keep sensitive data out at generation time:
 
-- Refer to the project by its pseudonym from `~/.claude/retro-project-map.txt` (`project-a` style) — in the filename's topic words and the body. If the project has no entry yet, assign the next unused pseudonym and append it to the map. Never use the real project, product, client, or employer name. Exception: the skill system itself (claude-agent-dev-team) — it's public and the corpus README links to it, so pseudonymizing it is theater
+- Refer to the project by its pseudonym from `~/.claude/retro-project-map.txt` (`project-a` style) — in the filename's topic words and the body. If the project has no entry yet, assign the next unused pseudonym and append it to the map. Never use the real project, product, client, or employer name. Exception: the skill system itself (ai-agent-dev-team) — it's public and the corpus README links to it, so pseudonymizing it is theater
 - Never include credentials, tokens, API keys, or connection strings — not even expired or example ones from the session
 - No customer/client names, emails, or any PII; refer to people by role ("the PO", "a user")
 - No internal hostnames, IPs, or private URLs

@@ -1,6 +1,6 @@
 ---
 name: retro-mine
-description: Mine the shared retro corpus (~/retros, synced from EndofLineTech/retros) for recurring patterns and turn them into proposed rule changes for the claude-agent-dev-team skill system. Evidence-clustered, PO-decided — the skill proposes, the PO approves.
+description: Mine the shared retro corpus (~/retros, synced from EndofLineTech/retros) for recurring patterns and turn them into proposed rule changes for the ai-agent-dev-team skill system. Evidence-clustered, PO-decided — the skill proposes, the PO approves.
 when_to_use: mine retros, retro mining, retro analysis, retro-driven upgrades, what are the retros telling us, turn retros into actions
 user-invocable: true
 version: 0.2.0
@@ -8,7 +8,7 @@ version: 0.2.0
 
 # Retro Mine
 
-Turn the retro corpus into actionable changes to this skill system. This formalizes the "retro-driven rule additions" passes previously done by hand (see CHANGELOG). Run it from the claude-agent-dev-team repo — the output targets its skill files.
+Turn the retro corpus into actionable changes to this skill system. This formalizes the "retro-driven rule additions" passes previously done by hand (see CHANGELOG). Run it from the ai-agent-dev-team repo — the output targets its skill files.
 
 Retros are the stress test for skill rules: patterns found here become rules, and future retros validate them. Both directions matter — new patterns need new rules, and *recurring* patterns that already have rules mean the rule isn't working.
 

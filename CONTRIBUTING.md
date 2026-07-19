@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to the Claude Agent Dev Team. Whether you want to improve an existing persona, add a new one, or refine a ceremony — contributions are welcome.
+Thanks for your interest in contributing to the AI Agent Dev Team. Whether you want to improve an existing persona, add a new one, or refine a ceremony — contributions are welcome.
 
 ## How to Contribute
 

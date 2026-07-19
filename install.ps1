@@ -1,7 +1,7 @@
 #Requires -Version 5.0
 <#
 .SYNOPSIS
-    Claude Agent Dev Team — Claude Code + Codex PowerShell Installer
+    AI Agent Dev Team — Claude Code + Codex PowerShell Installer
 .DESCRIPTION
     Symlinks skills into ~/.claude/skills/ and ~/.agents/skills/ so git pull updates automatically.
     Use -Copy to copy instead of symlink (for customization).
@@ -72,7 +72,7 @@ function Get-SymlinkTarget {
 
 if ($Copy) { $Mode = 'copy' } else { $Mode = 'symlink' }
 
-Write-Host 'Installing Claude Agent Dev Team skills for Claude Code and Codex...'
+Write-Host 'Installing AI Agent Dev Team skills for Claude Code and Codex...'
 Write-Host "  Mode: $Mode"
 Write-Host "  From: $RepoDir"
 Write-Host "  Claude: $ClaudeSkillsDir"
@@ -142,8 +142,10 @@ foreach ($SkillsDir in $SkillDestinations) {
 
 # --- Manage ~/.claude/CLAUDE.md orchestration block ---
 $ClaudeMd = Join-Path (Join-Path $HOME '.claude') 'CLAUDE.md'
-$MarkerStart = '# --- Claude Agent Dev Team (managed) ---'
-$MarkerEnd = '# --- End Claude Agent Dev Team ---'
+$MarkerStart = '# --- AI Agent Dev Team (managed) ---'
+$MarkerEnd = '# --- End AI Agent Dev Team ---'
+$LegacyMarkerStart = '# --- Claude Agent Dev Team (managed) ---'
+$LegacyMarkerEnd = '# --- End Claude Agent Dev Team ---'
 
 $Block = @"
 $MarkerStart
@@ -153,6 +155,10 @@ Read ~/.claude/skills/_shared/orchestration.md before spawning any agent or doin
 $MarkerEnd
 "@
 
+if (Test-Path $ClaudeMd) {
+    $content = (Get-Content $ClaudeMd -Raw).Replace($LegacyMarkerStart, $MarkerStart).Replace($LegacyMarkerEnd, $MarkerEnd)
+    Set-Content -Path $ClaudeMd -Value $content -NoNewline
+}
 if ((Test-Path $ClaudeMd) -and (Get-Content $ClaudeMd -Raw) -match [regex]::Escape($MarkerStart)) {
     # Replace existing managed block (idempotent update)
     $content = Get-Content $ClaudeMd -Raw
@@ -184,6 +190,10 @@ Read ~/.agents/skills/_shared/orchestration.md before spawning any agent or doin
 $MarkerEnd
 "@
 
+if (Test-Path $AgentsMd) {
+    $content = (Get-Content $AgentsMd -Raw).Replace($LegacyMarkerStart, $MarkerStart).Replace($LegacyMarkerEnd, $MarkerEnd)
+    Set-Content -Path $AgentsMd -Value $content -NoNewline
+}
 if ((Test-Path $AgentsMd) -and (Get-Content $AgentsMd -Raw) -match [regex]::Escape($MarkerStart)) {
     $content = Get-Content $AgentsMd -Raw
     $pattern = [regex]::Escape($MarkerStart) + '[\s\S]*?' + [regex]::Escape($MarkerEnd)
