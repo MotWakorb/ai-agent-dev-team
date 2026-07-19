@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Claude Agent Dev Team — Uninstaller
-# Removes skills installed by install.sh from ~/.claude/ (default)
-# or from a project's .claude/ (--project <dir>)
+# Claude Agent Dev Team — Claude Code + Codex Uninstaller
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR=""
@@ -36,9 +34,13 @@ if [ -n "$PROJECT_DIR" ]; then
   PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
   CLAUDE_ROOT="${PROJECT_DIR}/.claude"
   CLAUDE_MD="${PROJECT_DIR}/CLAUDE.md"
+  CODEX_SKILLS_DIR="${PROJECT_DIR}/.agents/skills"
+  CODEX_MD="${PROJECT_DIR}/AGENTS.md"
 else
   CLAUDE_ROOT="${HOME}/.claude"
   CLAUDE_MD="${CLAUDE_ROOT}/CLAUDE.md"
+  CODEX_SKILLS_DIR="${HOME}/.agents/skills"
+  CODEX_MD="${CODEX_HOME:-${HOME}/.codex}/AGENTS.md"
 fi
 
 SKILLS_DIR="${CLAUDE_ROOT}/skills"
@@ -58,6 +60,8 @@ SKILLS=(
   qa-engineer
   technical-writer
   retro
+  retro-sync
+  retro-mine
   team-plan
   team-review
   standup
@@ -70,11 +74,13 @@ SKILLS=(
 
 # Check if anything is installed
 found=0
-for skill in "${SKILLS[@]}"; do
-  target="${SKILLS_DIR}/${skill}"
-  if [ -L "$target" ] || [ -d "$target" ]; then
-    found=$((found + 1))
-  fi
+for destination in "$SKILLS_DIR" "$CODEX_SKILLS_DIR"; do
+  for skill in "${SKILLS[@]}"; do
+    target="${destination}/${skill}"
+    if [ -L "$target" ] || [ -d "$target" ]; then
+      found=$((found + 1))
+    fi
+  done
 done
 
 if [ "$found" -eq 0 ]; then
@@ -94,15 +100,17 @@ if [ "$ASSUME_YES" -ne 1 ]; then
 fi
 
 echo ""
-echo "Uninstalling Claude Agent Dev Team skills..."
+echo "Uninstalling Claude Agent Dev Team skills from Claude Code and Codex..."
 removed=0
-for skill in "${SKILLS[@]}"; do
-  target="${SKILLS_DIR}/${skill}"
-  if [ -L "$target" ] || [ -d "$target" ]; then
-    rm -rf "$target"
-    echo "  Removed: $skill"
-    removed=$((removed + 1))
-  fi
+for destination in "$SKILLS_DIR" "$CODEX_SKILLS_DIR"; do
+  for skill in "${SKILLS[@]}"; do
+    target="${destination}/${skill}"
+    if [ -L "$target" ] || [ -d "$target" ]; then
+      rm -rf "$target"
+      echo "  Removed: $target"
+      removed=$((removed + 1))
+    fi
+  done
 done
 
 # --- Remove agent definitions installed from this repo's agents/ ---
@@ -126,20 +134,22 @@ fi
 MARKER_START="# --- Claude Agent Dev Team (managed) ---"
 MARKER_END="# --- End Claude Agent Dev Team ---"
 
-if [ -f "$CLAUDE_MD" ] && grep -qF "$MARKER_START" "$CLAUDE_MD"; then
-  awk -v start="$MARKER_START" -v end="$MARKER_END" '
-    $0 == start { skip=1; next }
-    skip && $0 == end { skip=0; next }
-    !skip { print }
-  ' "$CLAUDE_MD" > "${CLAUDE_MD}.tmp" && mv "${CLAUDE_MD}.tmp" "$CLAUDE_MD"
-  # Remove file if it's now empty (only whitespace)
-  if [ ! -s "$CLAUDE_MD" ] || ! grep -q '[^[:space:]]' "$CLAUDE_MD" 2>/dev/null; then
-    rm -f "$CLAUDE_MD"
-    echo "  Removed: ${CLAUDE_MD} (was empty after cleanup)"
-  else
-    echo "  Cleaned: ${CLAUDE_MD} (removed managed block, preserved other content)"
+for instructions_file in "$CLAUDE_MD" "$CODEX_MD"; do
+  if [ -f "$instructions_file" ] && grep -qF "$MARKER_START" "$instructions_file"; then
+    awk -v start="$MARKER_START" -v end="$MARKER_END" '
+      $0 == start { skip=1; next }
+      skip && $0 == end { skip=0; next }
+      !skip { print }
+    ' "$instructions_file" > "${instructions_file}.tmp" && mv "${instructions_file}.tmp" "$instructions_file"
+    # Remove file if it's now empty (only whitespace)
+    if [ ! -s "$instructions_file" ] || ! grep -q '[^[:space:]]' "$instructions_file" 2>/dev/null; then
+      rm -f "$instructions_file"
+      echo "  Removed: ${instructions_file} (was empty after cleanup)"
+    else
+      echo "  Cleaned: ${instructions_file} (removed managed block, preserved other content)"
+    fi
   fi
-fi
+done
 
 # --- Remove PreToolUse enforcement hook from settings (both variants) ---
 for settings_file in "${CLAUDE_ROOT}/settings.json" "${CLAUDE_ROOT}/settings.local.json"; do
@@ -173,9 +183,9 @@ if [ -n "$PROJECT_DIR" ]; then
       rm -f "$settings_file"
     fi
   done
-  rmdir "$SKILLS_DIR" "$AGENTS_DIR" "$CLAUDE_ROOT" 2>/dev/null || true
+  rmdir "$SKILLS_DIR" "$AGENTS_DIR" "$CLAUDE_ROOT" "$CODEX_SKILLS_DIR" "${PROJECT_DIR}/.agents" 2>/dev/null || true
 fi
 
 echo ""
-echo "Done. Removed ${removed} skill(s) from ${SKILLS_DIR}"
+echo "Done. Removed ${removed} skill installation(s)."
 echo "Note: ${RETRO_DIR} was not removed (may contain your retrospectives)"

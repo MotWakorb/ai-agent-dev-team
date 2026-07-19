@@ -1,6 +1,6 @@
 # Claude Agent Dev Team
 
-A set of Claude Code skills that simulate a full software development team with distinct professional personas. Each persona has domain expertise, professional biases, and the authority to disagree with the others. This is not a committee that politely agrees — it's a team that argues, commits, and ships.
+A set of Claude Code and Codex skills that simulate a full software development team with distinct professional personas. Each persona has domain expertise, professional biases, and the authority to disagree with the others. This is not a committee that politely agrees — it's a team that argues, commits, and ships.
 
 ## Installation
 
@@ -18,21 +18,21 @@ cd claude-agent-dev-team
 ./install.ps1
 ```
 
-Updates are just `git pull` — symlinks pick up changes automatically. If upgrading from a version before orchestration discipline was added, re-run the installer to set up `~/.claude/CLAUDE.md` and the enforcement hook.
+The installers configure both tools: Claude Code skills go to `~/.claude/skills`, Codex skills go to `~/.agents/skills`, and each tool gets a managed orchestration block in its global instructions file. Updates are just `git pull` — symlinks pick up changes automatically. Re-run the installer when managed instruction or hook setup changes.
 
 The installer also registers a PreToolUse hook in `~/.claude/settings.json` (`hooks/pretooluse.py`) that converts the mechanically decidable orchestration rules from prose to guarantees — see [Enforcement Hooks](#enforcement-hooks). Windows: the hook is not yet wired into `install.ps1`.
 
 ### Project-Scoped Install
 
-If you don't want the team in your entire Claude workflow, install it into a single project instead:
+If you don't want the team in every Claude Code and Codex project, install it into a single project instead:
 
 ```bash
 ./install.sh --project /path/to/your/project
 ```
 
-Everything lands under that project — skills in `.claude/skills/`, the `persona-reviewer` agent in `.claude/agents/`, the enforcement hook in `.claude/hooks/` + `.claude/settings.json`, and the orchestration block in the project's `CLAUDE.md`. Claude Code picks all of it up only in that project; the rest of your workflow is untouched.
+Everything lands under that project — Claude Code skills in `.claude/skills/`, Codex skills in `.agents/skills/`, orchestration blocks in `CLAUDE.md` and `AGENTS.md`, plus the Claude-specific agent and enforcement hook. Both tools pick the team up only in that project; the rest of your workflow is untouched.
 
-Project installs are copies, not symlinks, so they're self-contained: commit `.claude/` and `CLAUDE.md` and every teammate who clones the project gets the whole team with zero setup. The hook command uses `$CLAUDE_PROJECT_DIR`, so nothing user-specific is baked in. After a `git pull` in this repo, re-run the installer to update the copies.
+Project installs are copies, not symlinks, so they're self-contained: commit `.claude/`, `.agents/`, `CLAUDE.md`, and `AGENTS.md` and every teammate who clones the project gets the whole team with zero setup. The hook command uses `$CLAUDE_PROJECT_DIR`, so nothing user-specific is baked in. After a `git pull` in this repo, re-run the installer to update the copies.
 
 For a personal install that stays out of the project's git history, add `--local` — the hook registers in `.claude/settings.local.json` and the installer prints the `.gitignore` lines to add. Uninstall with `./uninstall.sh --project /path/to/your/project`.
 
@@ -153,7 +153,7 @@ Single-purpose orchestrator skills that guard a specific operational concern. Th
 |------|---------|
 | `_shared/conflict-resolution.md` | How personas disagree and resolve conflicts. Domain authority, escalation to PO, disagree-and-commit protocol. Critical security findings are non-negotiable |
 | `_shared/engineering-discipline.md` | Evidence over intuition. Verify before asserting. Completeness over sampling. Known failure modes. Naming discipline. One-way door protocol |
-| `_shared/orchestration.md` | Orchestrator discipline — how Claude dispatches agents, isolates worktrees, picks models per task, compresses decisions, and avoids merging past in-flight verification. Auto-loaded via `~/.claude/CLAUDE.md` (or the project's `CLAUDE.md` for project-scoped installs) |
+| `_shared/orchestration.md` | Orchestrator discipline — how the coding agent dispatches subagents, isolates worktrees, picks models per task, compresses decisions, and avoids merging past in-flight verification. Auto-loaded through Claude Code's `CLAUDE.md` and Codex's `AGENTS.md` |
 | `_shared/deployment-tier.md` | Tier definitions (home-lab / small-team / startup / enterprise) and per-persona calibration tables. Personas read this to right-size their recommendations to the deployment context |
 | `_shared/claude-md-project-template.md` | Template for the project `CLAUDE.md` block `/onboard` offers to write — the per-project facts (board, gates, branching, deploy) personas need every session |
 | `*/identity.md` | Condensed identity tier for each persona — used by two-phase standup, quick-mode `/team-plan` and `/team-review`, default `/grooming`, and lightweight triage. Domain authority, professional biases, and standup triggers in ~15 lines |
@@ -237,7 +237,7 @@ The hook distinguishes orchestrator from subagent via the `agent_id` field in ho
 ./install.ps1 -Copy      # Copy instead
 ```
 
-> **Windows gap:** `install.ps1` does not yet register the enforcement hook, install the `persona-reviewer` agent definition, or support `--project`. Skills and the CLAUDE.md orchestration block install fine.
+> **Windows gap:** `install.ps1` does not yet register the Claude Code enforcement hook, install the `persona-reviewer` agent definition, or support `--project`. Claude Code and Codex skills and orchestration blocks install fine.
 
 **Uninstall:**
 ```bash
@@ -252,15 +252,18 @@ If you prefer to copy specific skills:
 
 ```bash
 mkdir -p ~/.claude/skills
+mkdir -p ~/.agents/skills
 cp -R _shared ~/.claude/skills/_shared
 cp -R security-engineer ~/.claude/skills/security-engineer
+cp -R _shared ~/.agents/skills/_shared
+cp -R security-engineer ~/.agents/skills/security-engineer
 # ... copy whichever skills you want
 mkdir -p ~/retros
 ```
 
 ### Project-Specific Install
 
-To install for a single project instead of globally, copy into your project's `.claude/skills/` directory.
+To install for a single project instead of globally, copy into both `.claude/skills/` and `.agents/skills/`.
 
 ## Versioning & Rollback
 

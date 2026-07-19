@@ -6,6 +6,8 @@ Each `SKILL.md` carries a `version:` field in its frontmatter showing the system
 
 ## [Unreleased]
 
+- **Claude Code + Codex installation** — both installers now install every team skill for Claude Code (`~/.claude/skills`) and Codex (`~/.agents/skills`), add managed orchestration guidance to both `CLAUDE.md` and Codex's `AGENTS.md`, and remove both installations symmetrically. Project-scoped macOS/Linux installs likewise populate `.claude/skills` and `.agents/skills`.
+
 Fourth-wave retro-driven rule additions — second `/retro-mine` pass (7 retros, 2026-07-15 → 2026-07-16). All 7 retros post-date the third wave, so recurrences counted as rule-not-working signals. Three strengthenings (reviewer fence gets an evidence allowance, background-process observability extended with turn-end/self-match/timeout failures, claims-are-hypotheses extended with verdict/report scoping), five new rules, and a hook defect batch — each with ≥2-retro evidence or a rule-not-working trigger.
 
 ### Fixed
