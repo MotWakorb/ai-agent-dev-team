@@ -1,0 +1,211 @@
+name: Bootstrap trusted AI team review checks
+
+# HOME-LAB TRUST BOUNDARY:
+# These Check Runs record a MotWakorb maintainer assertion that persona reviews
+# completed. They do not prove an independent reviewer identity. GITHUB_TOKEN
+# emits checks through the generic github-actions App shared by repository
+# workflows, and the same maintainer credential can ship and attest. This
+# accepted bootstrap risk is not suitable above home-lab tier; higher tiers
+# require a dedicated GitHub App and a second authorization principal.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number
+        required: true
+        type: string
+      head_sha:
+        description: Current immutable pull request head SHA
+        required: true
+        type: string
+      classification:
+        description: Data-integrity classification
+        required: true
+        type: choice
+        options:
+          - other
+          - data-integrity
+      code_review_approved:
+        description: Attest that code review approved this exact head
+        required: true
+        type: boolean
+      dba_review_approved:
+        description: Attest that DBA review approved this exact head
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+concurrency:
+  group: ai-team-review-gate-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  attest:
+    name: Validate and publish trusted review checks
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      EXPECTED_ACTOR: MotWakorb
+      EXPECTED_ACTOR_ID: "31100779"
+      EXPECTED_REPOSITORY: MotWakorb/ai-agent-dev-team
+      INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+      INPUT_HEAD_SHA: ${{ inputs.head_sha }}
+      INPUT_CLASSIFICATION: ${{ inputs.classification }}
+      INPUT_CODE_REVIEW_APPROVED: ${{ inputs.code_review_approved }}
+      INPUT_DBA_REVIEW_APPROVED: ${{ inputs.dba_review_approved }}
+      DISPATCH_ACTOR: ${{ github.actor }}
+      DISPATCH_ACTOR_ID: ${{ github.actor_id }}
+      DISPATCH_REF: ${{ github.ref }}
+      DISPATCH_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Validate attestation and create Check Runs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$DISPATCH_ACTOR" != "$EXPECTED_ACTOR" ]]; then
+            echo "Only $EXPECTED_ACTOR may dispatch this bootstrap workflow." >&2
+            exit 1
+          fi
+          if [[ "$DISPATCH_ACTOR_ID" != "$EXPECTED_ACTOR_ID" ]]; then
+            echo "Dispatcher actor ID is not authorized." >&2
+            exit 1
+          fi
+          if [[ "$DISPATCH_REPOSITORY" != "$EXPECTED_REPOSITORY" ]]; then
+            echo "This workflow is restricted to $EXPECTED_REPOSITORY." >&2
+            exit 1
+          fi
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "This trusted bootstrap workflow must run from the default main branch." >&2
+            exit 1
+          fi
+          if [[ ! "$INPUT_PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "pr_number must be a positive integer." >&2
+            exit 1
+          fi
+          if [[ ! "$INPUT_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "head_sha must be a full 40-character hexadecimal SHA." >&2
+            exit 1
+          fi
+
+          head_sha="$(printf '%s' "$INPUT_HEAD_SHA" | tr '[:upper:]' '[:lower:]')"
+          case "$INPUT_CLASSIFICATION" in
+            other|data-integrity) ;;
+            *)
+              echo "classification must be other or data-integrity." >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$INPUT_CODE_REVIEW_APPROVED" != "true" ]]; then
+            echo "code_review_approved must be true." >&2
+            exit 1
+          fi
+          if [[ "$INPUT_CLASSIFICATION" == "data-integrity" &&
+                "$INPUT_DBA_REVIEW_APPROVED" != "true" ]]; then
+            echo "dba_review_approved must be true for data-integrity changes." >&2
+            exit 1
+          fi
+
+          pr_fields="$(
+            gh api \
+              --hostname github.com \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$EXPECTED_REPOSITORY/pulls/$INPUT_PR_NUMBER" \
+              --jq '[.state, .base.repo.full_name, .head.sha] | @tsv'
+          )"
+          IFS=$'\t' read -r pr_state base_repository current_head_sha <<< "$pr_fields"
+          if [[ -z "$pr_state" || -z "$base_repository" || -z "$current_head_sha" ]]; then
+            echo "GitHub returned incomplete pull request state." >&2
+            exit 1
+          fi
+          if [[ "$pr_state" != "open" ]]; then
+            echo "Pull request must be open." >&2
+            exit 1
+          fi
+          if [[ "$base_repository" != "$EXPECTED_REPOSITORY" ]]; then
+            echo "Pull request base repository mismatch." >&2
+            exit 1
+          fi
+          current_head_sha="$(printf '%s' "$current_head_sha" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$current_head_sha" != "$head_sha" ]]; then
+            echo "Pull request head moved or does not match head_sha." >&2
+            exit 1
+          fi
+
+          classification_history="$(
+            gh api \
+              --hostname github.com \
+              --paginate \
+              --slurp \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$EXPECTED_REPOSITORY/commits/$head_sha/check-runs?filter=all&per_page=100" \
+              --jq '.[] | .check_runs[] | select(.name == "ai-team/data-integrity-classification") | [.id, .status, (.conclusion // ""), (.output.title // "")] | @tsv'
+          )"
+          seen_other=false
+          seen_data_integrity=false
+          while IFS=$'\t' read -r check_id check_status check_conclusion check_title; do
+            [[ -n "$check_id" ]] || continue
+            if [[ ! "$check_id" =~ ^[1-9][0-9]*$ ||
+                  "$check_status" != "completed" ||
+                  "$check_conclusion" != "success" ]]; then
+              echo "Prior classification Check Run is malformed or not successful." >&2
+              exit 1
+            fi
+            case "$check_title" in
+              classification:other) seen_other=true ;;
+              classification:data-integrity) seen_data_integrity=true ;;
+              *)
+                echo "Prior classification Check Run has malformed output." >&2
+                exit 1
+                ;;
+            esac
+          done <<< "$classification_history"
+          if [[ "$seen_other" == "true" && "$seen_data_integrity" == "true" ]]; then
+            echo "Conflicting prior classification Check Runs fail closed." >&2
+            exit 1
+          fi
+          if [[ "$seen_data_integrity" == "true" &&
+                "$INPUT_CLASSIFICATION" == "other" ]]; then
+            echo "A data-integrity classification cannot be downgraded for the same PR head." >&2
+            exit 1
+          fi
+
+          checks_endpoint="repos/$EXPECTED_REPOSITORY/check-runs"
+          gh api --hostname github.com --method POST "$checks_endpoint" \
+            -H "Accept: application/vnd.github+json" \
+            -f name='ai-team/code-review' \
+            -f head_sha="$head_sha" \
+            -f status=completed \
+            -f conclusion=success \
+            -f 'output[title]=code-review:approved' \
+            -f "output[summary]=Actor $DISPATCH_ACTOR attested code-review approval for PR #$INPUT_PR_NUMBER at $head_sha."
+
+          gh api --hostname github.com --method POST "$checks_endpoint" \
+            -H "Accept: application/vnd.github+json" \
+            -f name='ai-team/data-integrity-classification' \
+            -f head_sha="$head_sha" \
+            -f status=completed \
+            -f conclusion=success \
+            -f "output[title]=classification:$INPUT_CLASSIFICATION" \
+            -f "output[summary]=Actor $DISPATCH_ACTOR classified PR #$INPUT_PR_NUMBER at $head_sha as $INPUT_CLASSIFICATION."
+
+          if [[ "$INPUT_CLASSIFICATION" == "data-integrity" ]]; then
+            dba_title='dba-review:approved'
+            dba_summary="Actor $DISPATCH_ACTOR attested DBA approval for PR #$INPUT_PR_NUMBER at $head_sha."
+          else
+            dba_title='dba-review:not-required'
+            dba_summary="DBA review is not required for PR #$INPUT_PR_NUMBER at $head_sha because classification is other."
+          fi
+          gh api --hostname github.com --method POST "$checks_endpoint" \
+            -H "Accept: application/vnd.github+json" \
+            -f name='ai-team/dba-review' \
+            -f head_sha="$head_sha" \
+            -f status=completed \
+            -f conclusion=success \
+            -f "output[title]=$dba_title" \
+            -f "output[summary]=$dba_summary"
