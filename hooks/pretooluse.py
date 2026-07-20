@@ -15,22 +15,16 @@ orchestration rules from prose to guarantees:
      beads; board state transitions are orchestrator territory.
   3. Bead-referenced commits — in repos with .beads/, `git commit -m` must
      reference a bead id (escape hatch: literal [no-bead]).
-  4. Provider review fence — direct `gh pr merge` commands require trusted
-     GitHub check runs bound to the canonical repository and immutable PR head;
-     direct git merges and unsupported shell wrappers fail closed.
 
-Semantic rules (live merge authorization, definition of done, backlog sign-off)
-stay in _shared/orchestration.md — they are not mechanically decidable.
+Merge authorization (once "Rule 4", a provider review fence) now lives entirely
+in _shared/orchestration.md as a semantic rule — it is not enforced here.
 
 Self-check after edits: python3 pretooluse.py --check
 """
 import json
 import os
 import re
-import shlex
-import subprocess
 import sys
-import time
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CEREMONIES = {"team-plan", "team-review", "grooming", "standup", "spike", "postmortem"}
@@ -82,374 +76,6 @@ def bead_prefix(root):
     return os.path.basename(root)
 
 
-REQUIRED_CHECKS = (
-    "ai-team/code-review",
-    "ai-team/data-integrity-classification",
-    "ai-team/dba-review",
-)
-
-
-def merge_shaped(command):
-    """Recognize merge executables while treating ordinary arguments as data."""
-    command = strip_heredoc_bodies(command)
-    if re.search(r"\$\([^)]*(?:gh\s+pr\s+merge|git\s+merge)\b", command, re.S):
-        return True
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        tokens = list(lexer)
-    except ValueError:
-        return bool(re.search(r"\b(?:gh\s+pr\s+merge|git\s+merge)\b", command))
-    start = 0
-    while start < len(tokens):
-        end = start
-        while end < len(tokens) and tokens[end] not in (";", "&&", "||", "|", "&"):
-            end += 1
-        segment = tokens[start:end]
-        if executable_segment_is_merge(segment):
-            return True
-        start = end + 1
-    return False
-
-
-def strip_heredoc_bodies(command):
-    """Remove heredoc payload lines; their contents are not shell commands."""
-    lines = command.splitlines(keepends=True)
-    output = []
-    terminator = None
-    for line in lines:
-        if terminator is not None:
-            if line.strip() == terminator:
-                terminator = None
-                output.append(line)
-            else:
-                output.append("\n")
-            continue
-        output.append(line)
-        match = re.search(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", line)
-        if match:
-            terminator = match.group(2)
-    return "".join(output)
-
-
-def executable_segment_is_merge(tokens):
-    if not tokens:
-        return False
-    cursor = 0
-    while cursor < len(tokens) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[cursor]):
-        cursor += 1
-    if cursor >= len(tokens):
-        return False
-    executable = os.path.basename(tokens[cursor])
-    rest = tokens[cursor + 1:]
-    if executable in ("env", "command"):
-        while rest and (rest[0].startswith("-") or "=" in rest[0]):
-            rest = rest[1:]
-        return executable_segment_is_merge(rest)
-    if executable in ("sh", "bash", "zsh") and "-c" in rest:
-        index = rest.index("-c")
-        return index + 1 < len(rest) and merge_shaped(rest[index + 1])
-    if executable == "gh":
-        return rest[:2] == ["pr", "merge"]
-    if executable == "git":
-        cursor = 0
-        while cursor < len(rest) and rest[cursor] != "merge":
-            if rest[cursor] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace"):
-                cursor += 2
-            elif rest[cursor].startswith("-"):
-                cursor += 1
-            else:
-                return False
-        return cursor < len(rest) and rest[cursor] == "merge"
-    return False
-
-
-def parse_merge_command(command):
-    """Parse the one supported merge form: direct `gh pr merge <number> ...`."""
-    if not merge_shaped(command):
-        return None, "not a merge-shaped command"
-    if any(marker in command for marker in ("$(", "`", "\n", "\r", ";", "&&", "||", "|")):
-        return None, "dynamic, nested, or compound shell merge commands are unsupported"
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return None, "malformed shell quoting"
-    if tokens[:3] != ["gh", "pr", "merge"]:
-        return None, "only the direct `gh pr merge` form is supported"
-    if len(tokens) < 4 or not tokens[3].isdigit():
-        return None, "an explicit numeric PR must immediately follow `gh pr merge`"
-    result = {"pr": int(tokens[3]), "repo": None, "head": None}
-    flag_only = {
-        "--admin", "--auto", "--delete-branch", "--disable-auto", "--merge",
-        "--rebase", "--squash",
-    }
-    value_options = {
-        "-b": "ignored", "--body": "ignored", "-F": "ignored",
-        "--body-file": "ignored", "-s": "ignored", "--subject": "ignored",
-        "-R": "repo", "--repo": "repo", "--match-head-commit": "head",
-    }
-    cursor = 4
-    while cursor < len(tokens):
-        token = tokens[cursor]
-        if token == "--":
-            if cursor != len(tokens) - 1:
-                return None, "multiple merge targets are unsupported"
-            cursor += 1
-            continue
-        if token in flag_only:
-            cursor += 1
-            continue
-        option, separator, attached = token.partition("=")
-        if not separator and len(token) > 2 and token[:2] in ("-b", "-F", "-s", "-R"):
-            option, attached = token[:2], token[2:]
-            separator = "="
-        if option in value_options:
-            if separator:
-                value = attached
-            elif cursor + 1 < len(tokens):
-                cursor += 1
-                value = tokens[cursor]
-            else:
-                return None, f"{option} requires a value"
-            field = value_options[option]
-            if not value or (field != "ignored" and result[field] is not None):
-                return None, f"invalid or repeated {option}"
-            if field != "ignored":
-                result[field] = value
-            cursor += 1
-            continue
-        return None, f"unsupported merge argument: {token}"
-    if not result["head"] or not re.fullmatch(r"[0-9a-fA-F]{40}", result["head"]):
-        return None, "supply the full 40-character PR head with --match-head-commit <sha>"
-    return result, None
-
-
-def load_review_config(root):
-    path = os.path.join(root, ".agents", "review-gate.json")
-    try:
-        with open(path, encoding="utf-8") as config_file:
-            config = json.load(config_file)
-    except (OSError, ValueError):
-        return None, "missing or invalid .agents/review-gate.json"
-    if not isinstance(config, dict):
-        return None, "invalid .agents/review-gate.json object"
-    return config, None
-
-
-def validate_review_config(config):
-    if not isinstance(config, dict):
-        return "review-gate config must be a JSON object"
-    if config.get("version") != 1:
-        return "review-gate config version must be 1"
-    if not isinstance(config.get("github_repository"), str) or not re.fullmatch(
-            r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", config["github_repository"]):
-        return "review-gate github_repository is invalid"
-    if not isinstance(config.get("github_hostname"), str) or not re.fullmatch(
-            r"[A-Za-z0-9.-]+", config["github_hostname"]):
-        return "review-gate github_hostname is invalid"
-    apps = config.get("required_check_apps")
-    if not isinstance(apps, dict):
-        return "review-gate required_check_apps must be an object"
-    for name in REQUIRED_CHECKS:
-        app = apps.get(name)
-        if (not isinstance(app, dict)
-                or not isinstance(app.get("id"), int)
-                or isinstance(app.get("id"), bool)
-                or app["id"] <= 0
-                or not isinstance(app.get("slug"), str)
-                or not re.fullmatch(r"[A-Za-z0-9-]+", app["slug"])):
-            return f"trusted app id/slug is invalid for {name}"
-    return None
-
-
-def trusted_check(config, name, head, checks):
-    app = config["required_check_apps"][name]
-    candidates = [
-        check for check in checks
-        if isinstance(check, dict)
-        and check.get("name") == name
-        and isinstance(check.get("head_sha"), str)
-        and check["head_sha"] == head
-        and isinstance(check.get("app"), dict)
-        and check["app"].get("id") == app["id"]
-        and check["app"].get("slug") == app["slug"]
-        and isinstance(check.get("id"), int)
-    ]
-    if not candidates:
-        return None, f"trusted {name} check is missing for {head}"
-    latest = max(candidates, key=lambda check: check.get("id") or 0)
-    if latest.get("status") != "completed" or latest.get("conclusion") != "success":
-        return None, f"latest trusted {name} check is not successful"
-    return latest, None
-
-
-def provider_gate(config, canonical_repo, head, checks):
-    """Validate trusted GitHub check runs for one canonical repo and head SHA."""
-    error = validate_review_config(config)
-    if error:
-        return False, error
-    if not isinstance(canonical_repo, str) or not isinstance(head, str):
-        return False, "canonical repository or head SHA has an invalid type"
-    checks, error = validate_check_runs_response({
-        "total_count": len(checks) if isinstance(checks, list) else None,
-        "check_runs": checks,
-    })
-    if error:
-        return False, error
-    if config["github_repository"].lower() != canonical_repo.lower():
-        return False, "configured repository does not match the canonical GitHub repository"
-    _, error = trusted_check(config, REQUIRED_CHECKS[0], head, checks)
-    if error:
-        return False, error
-    classification, error = trusted_check(config, REQUIRED_CHECKS[1], head, checks)
-    if error:
-        return False, error
-    title = ((classification.get("output") or {}).get("title") or "").strip()
-    if title not in ("classification:data-integrity", "classification:other"):
-        return False, "classification check output.title is malformed"
-    if title == "classification:data-integrity":
-        _, error = trusted_check(config, REQUIRED_CHECKS[2], head, checks)
-        if error:
-            return False, error
-    return True, None
-
-
-def gh_json(args, cwd, hostname, deadline):
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        return None, "GitHub provider deadline exceeded"
-    environment = os.environ.copy()
-    environment["GH_HOST"] = hostname
-    try:
-        process = subprocess.run(
-            ["gh", *args], cwd=cwd, env=environment, capture_output=True,
-            text=True, timeout=min(4, remaining))
-    except (OSError, subprocess.TimeoutExpired):
-        return None, "GitHub provider query unavailable or timed out"
-    if process.returncode:
-        return None, "GitHub provider query failed"
-    try:
-        return json.loads(process.stdout), None
-    except ValueError:
-        return None, "GitHub provider returned invalid JSON"
-
-
-def validate_check_runs_response(response):
-    if not isinstance(response, dict):
-        return None, "GitHub check-run response must be an object"
-    total = response.get("total_count")
-    checks = response.get("check_runs")
-    if (not isinstance(total, int) or isinstance(total, bool)
-            or not isinstance(checks, list) or total != len(checks)):
-        return None, "GitHub check-run state is unavailable or ambiguous"
-    for check in checks:
-        if not isinstance(check, dict):
-            return None, "GitHub check-run entry must be an object"
-        if (not isinstance(check.get("id"), int)
-                or isinstance(check.get("id"), bool)
-                or not isinstance(check.get("name"), str)
-                or not isinstance(check.get("head_sha"), str)
-                or not isinstance(check.get("status"), str)
-                or not isinstance(check.get("conclusion"), (str, type(None)))
-                or not isinstance(check.get("app"), dict)
-                or not isinstance(check["app"].get("id"), int)
-                or isinstance(check["app"].get("id"), bool)
-                or not isinstance(check["app"].get("slug"), str)
-                or not isinstance(check.get("output"), dict)
-                or not isinstance(check["output"].get("title"), (str, type(None)))):
-            return None, "GitHub check-run entry has invalid field types"
-    return checks, None
-
-
-def verify_github_merge(parsed, root):
-    deadline = time.monotonic() + 18
-    config, error = load_review_config(root)
-    if error:
-        return error
-    error = validate_review_config(config)
-    if error:
-        return error
-    hostname = config["github_hostname"]
-    requested_repo = parsed["repo"]
-    if requested_repo:
-        repo_data, error = gh_json(
-            ["api", "--hostname", hostname, f"repos/{requested_repo}"],
-            root, hostname, deadline)
-    else:
-        view, error = gh_json(
-            ["repo", "view", "--json", "nameWithOwner"],
-            root, hostname, deadline)
-        if error:
-            return error
-        requested_repo = view.get("nameWithOwner") if isinstance(view, dict) else None
-        if not requested_repo:
-            return "cannot resolve the current GitHub repository"
-        repo_data, error = gh_json(
-            ["api", "--hostname", hostname, f"repos/{requested_repo}"],
-            root, hostname, deadline)
-    if error:
-        return error
-    canonical_repo = repo_data.get("full_name") if isinstance(repo_data, dict) else None
-    if not isinstance(canonical_repo, str) or not re.fullmatch(
-            r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", canonical_repo):
-        return "GitHub repository identity is ambiguous"
-    pull, error = gh_json(
-        ["api", "--hostname", hostname,
-         f"repos/{canonical_repo}/pulls/{parsed['pr']}"],
-        root, hostname, deadline)
-    if error:
-        return error
-    if not isinstance(pull, dict):
-        return "GitHub PR state is unavailable or ambiguous"
-    base = pull.get("base")
-    head_state = pull.get("head")
-    if (not isinstance(base, dict)
-            or not isinstance(base.get("repo"), dict)
-            or not isinstance(base["repo"].get("full_name"), str)
-            or not isinstance(head_state, dict)
-            or not isinstance(head_state.get("sha"), str)
-            or not re.fullmatch(r"[0-9a-fA-F]{40}", head_state["sha"])):
-        return "GitHub PR state has invalid field types"
-    if base["repo"]["full_name"].lower() != canonical_repo.lower():
-        return "PR base repository does not match the canonical repository"
-    head = head_state["sha"]
-    if not head or head.lower() != parsed["head"].lower():
-        return "PR head moved or --match-head-commit does not match"
-    checks_data, error = gh_json(
-        ["api", "--hostname", hostname, "-H", "Accept: application/vnd.github+json",
-         f"repos/{canonical_repo}/commits/{head}/check-runs?filter=all&per_page=100"],
-        root, hostname, deadline)
-    if error:
-        return error
-    checks, error = validate_check_runs_response(checks_data)
-    if error:
-        return error
-    allowed, error = provider_gate(config, canonical_repo, head, checks)
-    return None if allowed else error
-
-
-def enforce_merge(command, root, verifier=verify_github_merge):
-    """Return a sanitized denial reason, or None when provider checks allow."""
-    try:
-        parsed, error = parse_merge_command(command)
-        if error:
-            return error
-        return verifier(parsed, root)
-    except Exception:
-        return "internal provider review-gate error"
-
-
-def rule4_error(command, root):
-    """Run merge discovery and enforcement behind one no-crash boundary."""
-    try:
-        if not isinstance(command, str) or not merge_shaped(command):
-            return None
-        return enforce_merge(command, root)
-    except Exception:
-        return "internal provider review-gate error"
-
-
 def main():
     try:
         data = json.load(sys.stdin)
@@ -474,8 +100,8 @@ def main():
                  "personas default to enterprise rigor. Run /onboard first.")
         return
 
-    if root == os.path.realpath(REPO_DIR) and tool != "Bash":
-        return  # meta-work exception; Bash merge enforcement runs below
+    if root == os.path.realpath(REPO_DIR):
+        return  # meta-work on the skill-system repo itself is exempt
 
     # Rule A: orchestrator edit block
     if agent_id is None and tool in ("Edit", "Write", "NotebookEdit", "apply_patch"):
@@ -510,21 +136,6 @@ def main():
         # Quoted spans are data, not command syntax: a `>=` or backtick inside a
         # bd description must not read as a redirect (field false-positive, 3x).
         scan = re.sub(r"'[^']*'|\"[^\"]*\"", " ", cmd)
-
-        # Rule 4: provider-authoritative review fence. The supported command keeps
-        # the literal `gh pr merge` prefix so the independent installer ask-gate
-        # still requires a live authorization click.
-        error = rule4_error(cmd, root)
-        if error:
-            deny("Merge blocked: provider review gate failed: " + error + ". "
-                 "Use direct `gh pr merge <number> ... --match-head-commit "
-                 "<full-40-character-sha>`; direct git merges and shell wrappers "
-                 "cannot be bound safely to provider review state. "
-                 "Required trusted checks: " + ", ".join(REQUIRED_CHECKS) + ". "
-                 "This does not replace the separate live merge-authorization gate.")
-
-        if root == os.path.realpath(REPO_DIR):
-            return  # meta-work exemption excludes merge enforcement above
 
         # Rule A2: orchestrator Bash-mutation block (the Bash loophole in rule A).
         # ponytail: heuristic — catches sed -i/perl -i/patch and redirect/tee into
@@ -663,122 +274,20 @@ def _self_check():
     assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "otherproj-wccvo: fix"'}}, beaded)
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "zork-ab1c2: fix"'}}, beaded_with_prefix)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-wccvo: fix"'}}, beaded_with_prefix)
-    # Rule 4 parser: only the ask-gate-compatible direct gh prefix is supported.
-    parsed, error = parse_merge_command(
-        "gh pr merge 42 --squash --repo Owner/Repo --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-    assert not error
-    assert parsed == {"pr": 42, "repo": "Owner/Repo", "head": "a" * 40}
-    parsed, error = parse_merge_command(
-        "gh pr merge 42 -ROwner/Repo --match-head-commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-    assert not error and parsed["repo"] == "Owner/Repo"
-    for command in (
-        "gh pr merge 42 --squash",
-        "gh pr merge --squash",
-        "/usr/bin/gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "env gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "command gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "sh -c 'gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'",
-        "gh pr merge 42 43 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "gh pr merge 42 --match-head-commit=$(git rev-parse HEAD)",
-        "git merge feature",
-        "git -C /tmp/worktree merge feature",
-        "git merge feature other",
-    ):
-        assert merge_shaped(command)
-        _, error = parse_merge_command(command)
-        assert error, command
-    assert not merge_shaped("git merge-base main HEAD")
-    for command in (
-        'echo "gh pr merge 42"',
-        'git commit -m "document gh pr merge 42"',
-        "bd update x-1 --notes 'never run git merge feature'",
-        "python3 - <<'PY'\nprint('gh pr merge 42')\nPY",
-    ):
-        assert not merge_shaped(command), command
-    assert run({
+    # Rule 4 removed: gh pr merge is no longer fenced, in any repo including this one.
+    assert not run({
         "tool_name": "Bash",
-        "tool_input": {"command": "gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "tool_input": {"command": "gh pr merge 42 --squash"},
     }, onboarded)
-
-    # The skill-system repo's meta-work exemption does not exempt merges.
     meta_proc = subprocess.run(
         [sys.executable, os.path.abspath(__file__)],
         input=json.dumps({
             "tool_name": "Bash",
-            "tool_input": {"command": "gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            "tool_input": {"command": "gh pr merge 42 --squash"},
             "cwd": REPO_DIR,
         }),
         capture_output=True, text=True)
-    assert "deny" in meta_proc.stdout
-    assert enforce_merge(
-        "gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", REPO_DIR,
-        verifier=lambda parsed, root: (_ for _ in ()).throw(RuntimeError("secret"))) \
-        == "internal provider review-gate error"
-    assert enforce_merge(
-        "gh pr merge 42 --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", REPO_DIR,
-        verifier=lambda parsed, root: "GitHub provider deadline exceeded") \
-        == "GitHub provider deadline exceeded"
-
-    # Provider validation is bound to canonical repo, immutable head, and trusted apps.
-    config = {
-        "version": 1,
-        "github_repository": "Owner/Repo",
-        "github_hostname": "github.com",
-        "required_check_apps": {
-            "ai-team/code-review": {"id": 101, "slug": "trusted-review"},
-            "ai-team/data-integrity-classification": {"id": 102, "slug": "trusted-classifier"},
-            "ai-team/dba-review": {"id": 103, "slug": "trusted-dba"},
-        },
-    }
-    def check(name, app_id, slug, title=""):
-        return {
-            "id": app_id * 10,
-            "name": name,
-            "head_sha": "a" * 40,
-            "status": "completed",
-            "conclusion": "success",
-            "app": {"id": app_id, "slug": slug},
-            "output": {"title": title},
-        }
-    other_checks = [
-        check("ai-team/code-review", 101, "trusted-review"),
-        check("ai-team/data-integrity-classification", 102, "trusted-classifier",
-              "classification:other"),
-    ]
-    assert provider_gate(config, "Owner/Repo", "a" * 40, other_checks) == (True, None)
-    data_checks = other_checks[:-1] + [
-        check("ai-team/data-integrity-classification", 102, "trusted-classifier",
-              "classification:data-integrity"),
-        check("ai-team/dba-review", 103, "trusted-dba"),
-    ]
-    assert provider_gate(config, "owner/repo", "a" * 40, data_checks) == (True, None)
-    assert validate_check_runs_response({
-        "total_count": len(data_checks), "check_runs": data_checks,
-    }) == (data_checks, None)
-    for malformed_response in (
-        [],
-        {"total_count": "2", "check_runs": data_checks},
-        {"total_count": 1, "check_runs": ["malformed"]},
-        {"total_count": 1, "check_runs": [{"id": 1, "app": []}]},
-    ):
-        assert validate_check_runs_response(malformed_response)[0] is None
-    for bad_config, repo, head, checks in (
-        ([], "Owner/Repo", "a" * 40, other_checks),
-        ({}, "Owner/Repo", "a" * 40, other_checks),
-        (config, "Other/Repo", "a" * 40, other_checks),
-        (config, "Owner/Repo", "b" * 40, other_checks),
-        (config, "Owner/Repo", "a" * 40,
-         [check("ai-team/code-review", 999, "attacker")] + other_checks[1:]),
-        (config, "Owner/Repo", "a" * 40,
-         other_checks[:-1] + [check("ai-team/data-integrity-classification",
-                                   102, "trusted-classifier", "other")]),
-        (config, "Owner/Repo", "a" * 40, data_checks[:-1]),
-        (config, "Owner/Repo", "a" * 40, ["malformed"]),
-        (config, "Owner/Repo", "a" * 40,
-         other_checks[:-1] + [{"name": "ai-team/data-integrity-classification",
-                              "head_sha": "a" * 40, "app": []}]),
-    ):
-        assert provider_gate(bad_config, repo, head, checks)[0] is False
+    assert "deny" not in meta_proc.stdout
     print("all checks passed")
 
 
