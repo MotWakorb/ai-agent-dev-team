@@ -7,6 +7,13 @@ AI Agent Dev Team merge hook. Run its network-free test with:
 python3 tests/test_ai_team_review_gate.py
 ```
 
+To make these checks actually required before merge, apply the branch
+ruleset to the target repo (idempotent, requires `gh` with admin access):
+
+```bash
+scripts/apply-branch-protection.sh <owner>/<repo>
+```
+
 ## Accepted trust boundary
 
 The checks are a maintainer attestation by GitHub actor ID `31100779`

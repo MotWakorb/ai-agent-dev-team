@@ -216,7 +216,7 @@ Prompt-level rules (`CLAUDE.md`, `AGENTS.md`, `SKILL.md`) are advisory — they 
 | **Persona bead firewall** | A subagent runs `bd create/close/delete/reopen` | Denied — board state transitions are orchestrator territory; findings are reported, the PO decides. `bd update` stays allowed |
 | **Bead-referenced commits** | `git commit -m` without a bead id in a repo with `.beads/` | Denied — include the bead id, or the literal `[no-bead]` for genuinely untracked commits |
 
-Where the host supplies `agent_id`, the hook distinguishes orchestrator from subagent with that field. Merge authorization, definition of done, and backlog sign-off are semantic rules in `_shared/orchestration.md` — the hook no longer fences `gh pr merge`; make merge review authoritative with GitHub branch protection/rulesets, which apply regardless of which tool or command shape performs the merge. This repo remains exempt for meta-work edits. Self-check: `python3 hooks/pretooluse.py --check`.
+Where the host supplies `agent_id`, the hook distinguishes orchestrator from subagent with that field. Merge authorization, definition of done, and backlog sign-off are semantic rules in `_shared/orchestration.md` — the hook no longer fences `gh pr merge`; make merge review authoritative with GitHub branch protection/rulesets, which apply regardless of which tool or command shape performs the merge. To configure that on a project repo, run `scripts/apply-branch-protection.sh <owner>/<repo>` — it idempotently applies a ruleset requiring the `ai-team/*` review checks (published by `.github/workflows/ai-team-review-gate.yml`) on the default branch. This repo remains exempt for meta-work edits. Self-check: `python3 hooks/pretooluse.py --check`.
 
 ## Install Options
 
