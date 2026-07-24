@@ -67,7 +67,7 @@ Three enforcement points:
 
 - **Layer-spanning features cross their seam before "healthy" or merge.** A feature spanning UI↔API↔external boundaries is not reportable as working — and does not merge — without at least one check that crosses the real seam (E2E test, live-surface render, golden-fixture pipeline run). Green suites on each side of an uncrossed seam verify the layers, not the feature. Field cost: five review rounds reporting green suites on a feature that was never wired end-to-end.
 - **Regression tests are proven red-without-fix.** A test that pins a fix demonstrates it: revert the fix, watch the test fail, restore. "N tests pass" is count, not coverage — the field tell was a vacuous assert that could never fail independently.
-- **Distribution-shaped problems validate against sampled data.** When correctness depends on a data distribution (collision rates, matching, dedup), tests that mirror the reviewer's cited examples pin the examples, not the behavior — sample the real distribution, and reviewers re-run their measurement method fresh each round rather than re-checking cited examples.
+- **Distribution-shaped problems validate against sampled data.** When correctness depends on a data distribution (collision rates, matching, dedup), tests that mirror the reviewer's cited examples pin the examples, not the behavior — sample the real distribution. (Reviewer-side counterpart: method-based re-verification, `team-review/SKILL.md` §"Re-Review and Remediation Rounds".)
 
 ### Confirm the Deployed Artifact Before Hypothesizing a Regression
 

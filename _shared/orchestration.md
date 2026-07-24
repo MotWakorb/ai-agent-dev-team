@@ -269,7 +269,7 @@ Every ship or verification brief MUST include this verbatim:
 
 When a persona surfaces a sibling concern mid-session — "while I was in there, I noticed X" — the orchestrator's default is to surface it to the PO as a note, not to file a bead. Filing the bead implies a commitment to work the PO hasn't authorized.
 
-If the PO confirms ("yes, file it"), file. If the PO is silent or says "noted," don't file — the finding goes in the session retro or the next standup, and the PO decides when to formalize.
+If the PO confirms ("yes, file it"), file. If the PO is silent or says "noted," don't file — the finding goes in the session retro or the next standup, is re-surfaced there rather than dropped, and the PO decides when to formalize.
 
 The helpfulness instinct is the failure mode: filing the bead feels proactive, but it adds work to a backlog already being trimmed. Backlog growth without PO sign-off is scope creep.
 
