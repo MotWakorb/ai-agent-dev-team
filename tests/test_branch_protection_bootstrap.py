@@ -19,12 +19,12 @@ import sys
 
 args = sys.argv[1:]
 joined = " ".join(args)
-if "--method" in args or "-X" in args:
+with open(os.environ["GH_CAPTURE"], "a", encoding="utf-8") as capture:
     body = sys.stdin.read() if "--input" in args else ""
-    with open(os.environ["GH_CAPTURE"], "a", encoding="utf-8") as capture:
-        capture.write(json.dumps({"args": args, "body": body}) + "\\n")
+    capture.write(json.dumps({"args": args, "body": body}) + "\\n")
+if "--method" in args or "-X" in args:
     print("{}")
-elif joined.startswith("api repos/") and joined.endswith("/rulesets"):
+elif "/rulesets" in joined:
     print(os.environ.get("RULESETS", "[]"))
 else:
     print("unexpected gh invocation: " + joined, file=sys.stderr)
@@ -61,11 +61,16 @@ class BranchProtectionBootstrapTest(unittest.TestCase):
             ["bash", str(SCRIPT), *args],
             env=env, capture_output=True, text=True)
 
-    def calls(self):
+    def invocations(self):
         if not self.capture.exists():
             return []
         return [json.loads(line)
                 for line in self.capture.read_text().splitlines()]
+
+    def calls(self):
+        """Write calls only (POST/PUT)."""
+        return [c for c in self.invocations()
+                if "--method" in c["args"] or "-X" in c["args"]]
 
     def test_creates_ruleset_when_absent(self):
         result = self.run_script("acme/widgets")
@@ -112,6 +117,39 @@ class BranchProtectionBootstrapTest(unittest.TestCase):
         result = self.run_script()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.calls(), [])
+
+    def test_listing_excludes_org_parents_and_paginates(self):
+        # Kickback (reviewer #6): PUT against an org-level parent ruleset
+        # 404s — the listing must scope to repo-level rulesets only.
+        result = self.run_script("acme/widgets")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        get = " ".join(self.invocations()[0]["args"])
+        self.assertIn("includes_parents=false", get)
+        self.assertIn("--paginate", get)
+
+    def test_org_level_ruleset_with_same_name_is_ignored(self):
+        rulesets = json.dumps(
+            [{"id": 5, "name": "ai-team-review-gate",
+              "source_type": "Organization"}])
+        result = self.run_script("acme/widgets", rulesets=rulesets)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertEqual(len(calls), 1)
+        self.assertIn("POST", calls[0]["args"])
+
+    def test_paginated_concatenated_listing_is_parsed(self):
+        # gh --paginate concatenates page arrays: [..][..]
+        rulesets = (
+            json.dumps([{"id": 3, "name": "other"}])
+            + json.dumps([{"id": 9, "name": "ai-team-review-gate",
+                           "source_type": "Repository"}]))
+        result = self.run_script("acme/widgets", rulesets=rulesets)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertEqual(len(calls), 1)
+        self.assertIn("PUT", calls[0]["args"])
+        self.assertIn("repos/acme/widgets/rulesets/9",
+                      " ".join(calls[0]["args"]))
 
 
 if __name__ == "__main__":

@@ -107,6 +107,26 @@ class HookTest(unittest.TestCase):
         self.assert_denied(
             f'echo "<<X" > {root}/src/x.txt\nX', cwd=root)
 
+    def test_quoted_heredoc_marker_does_not_swallow_next_line_redirect(self):
+        # Adversarial (kickback PTU round, reviewer #2): a quoted "<<EOF"
+        # with the redirect on the NEXT line and a matching terminator line
+        # must still deny — quoted markers are data, not heredoc operators.
+        root = self.mkdir(onboarded=True)
+        self.assert_denied(
+            f'echo "<<EOF"\necho hi > {root}/src/x.txt\nEOF', cwd=root)
+
+    def test_quoted_tee_word_is_data_not_a_write(self):
+        # Kickback (reviewer #1): `tee` inside quoted data must not read as
+        # a tee command with the next word as its target.
+        root = self.mkdir(onboarded=True)
+        self.assert_allowed(
+            'git commit -m "docs: explain tee usage [no-bead]"', cwd=root)
+
+    def test_quoted_tee_target_in_tree_is_still_denied(self):
+        # Adversarial: quoting the tee target must not evade the guard.
+        root = self.mkdir(onboarded=True)
+        self.assert_denied(f'cat a | tee "{root}/README.md"', cwd=root)
+
     # --- Fix 2: compound denies name the offending segment (2026-07-20-22)
 
     def test_compound_deny_names_triggering_segment(self):
@@ -141,6 +161,16 @@ class HookTest(unittest.TestCase):
         reason = self.assert_denied(f"echo hi > {root}/x.txt", cwd=root)
         self.assertNotIn("segment", reason)
 
+    def test_separator_adjacent_redirect_blames_its_own_segment(self):
+        # Kickback (reviewer #5): the redirect op match starts on the
+        # separator char itself; the note must not blame the last segment.
+        root = self.mkdir(onboarded=True)
+        reason = self.assert_denied(
+            "true;>x.txt && gh pr create --fill", cwd=root)
+        culprit = reason.split("`")[1]
+        self.assertIn(">x.txt", culprit)
+        self.assertNotIn("gh pr create", culprit)
+
     # --- Fix 3: git context follows the command's cwd, not spawn cwd
     #     (2026-07-23-15)
 
@@ -169,6 +199,24 @@ class HookTest(unittest.TestCase):
         plain = self.mkdir(git=True)
         self.assert_denied(
             f'cd "{beaded}" && git commit -m "no bead"', cwd=plain)
+
+    def test_cd_out_of_tree_does_not_disarm_write_guard(self):
+        # Kickback (security PTU-1): a leading cd to an out-of-tree dir must
+        # not disable Rule A2 for a target inside the onboarded spawn tree.
+        root = self.mkdir(onboarded=True)
+        scratch = self.mkdir()
+        self.assert_denied(
+            f"cd {scratch} && echo hi > {root}/src/x.txt", cwd=root)
+
+    def test_cd_nonexistent_dir_does_not_disarm_write_guard(self):
+        root = self.mkdir(onboarded=True)
+        self.assert_denied(
+            f"cd /no/such/dir && echo x > {root}/src/x.py", cwd=root)
+
+    def test_cd_out_of_tree_does_not_disarm_sed_guard(self):
+        root = self.mkdir(onboarded=True)
+        self.assert_denied(
+            f"cd /tmp && sed -i '' s/a/b/ {root}/f.css", cwd=root)
 
     # --- The hook's own self-check stays green
 

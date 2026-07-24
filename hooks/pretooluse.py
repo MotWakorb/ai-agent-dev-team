@@ -75,12 +75,32 @@ def bash_scans(cmd):
     redirect targets and cd destinations stay resolvable as paths. Both
     preserve offsets into the original command for segment attribution.
     """
-    cmd = re.sub(
-        r"(<<-?\s*(['\"]?)(\w+)\2[^\n]*\n)(.*?)(\n\3)(?=\n|$)",
-        lambda m: m.group(1) + re.sub(r"[^\n]", " ", m.group(4)) + m.group(5),
-        cmd, flags=re.S)
     quoted = r"'[^']*'|\"[^\"]*\""
-    scan = re.sub(quoted, lambda m: " " * len(m.group(0)), cmd)
+    blank = lambda m: " " * len(m.group(0))
+    # Heredoc operators are located on quote-blanked text so a quoted "<<EOF"
+    # is data and cannot swallow following lines; delimiter and body come
+    # from the raw text at the operator's position.
+    qblank = re.sub(quoted, blank, cmd)
+    out = list(cmd)
+    blanked = []
+    for op in re.finditer(r"<<-?(?!<)", qblank):
+        if any(a <= op.start() < b for a, b in blanked):
+            continue  # operator text inside an already-blanked body
+        d = re.match(r"<<-?\s*(['\"]?)(\w+)\1", cmd[op.start():])
+        line_end = cmd.find("\n", op.start())
+        if not d or line_end < 0:
+            continue
+        term = re.search(r"\n" + re.escape(d.group(2)) + r"(?=\n|$)",
+                         cmd[line_end:])
+        if not term:
+            continue
+        body = (line_end + 1, line_end + term.start())
+        blanked.append(body)
+        for i in range(*body):
+            if out[i] != "\n":
+                out[i] = " "
+    cmd = "".join(out)
+    scan = re.sub(quoted, blank, cmd)
     pscan = re.sub(quoted,
                    lambda m: re.sub(r"[<>|;&`\\]", "",
                                     m.group(0)[1:-1]).ljust(len(m.group(0))),
@@ -101,7 +121,9 @@ def segment_note(cmd, scan, pos):
              if cmd[cuts[i]:cuts[i + 1]].strip()]
     if len(spans) < 2:
         return ""
-    start, end = next(((a, b) for a, b in spans if a <= pos < b), spans[-1])
+    # pos may land on a separator char (e.g. the `;` in `true;>x`): clamp to
+    # the nearest containing-or-following span, never the last by default.
+    start, end = next(((a, b) for a, b in spans if pos < b), spans[-1])
     culprit = " ".join(cmd[start:end].split())
     if len(culprit) > 120:
         culprit = culprit[:117] + "..."
@@ -135,20 +157,8 @@ def main():
     agent_id = data.get("agent_id")  # absent => main agent (orchestrator)
     agent_type = data.get("agent_type") or ""
 
-    cmd = scan = pscan = ""
-    if tool == "Bash":
-        cmd = tool_input.get("command") or ""
-        scan, pscan = bash_scans(cmd)
-        # Git context follows the command's own cwd, not the spawn cwd
-        # (retro 2026-07-23-15): honor a leading `cd <path> &&` / `;`.
-        m = re.match(r"\s*cd\s+([^\s;&|]+)\s*(?:&&|;|\n)", pscan)
-        if m:
-            dest = os.path.expandvars(os.path.expanduser(m.group(1)))
-            cwd = dest if os.path.isabs(dest) else os.path.join(cwd, dest)
-
     root = git_root(cwd) or os.path.realpath(cwd)
     onboarded = os.path.isfile(os.path.join(root, "COMPONENTS.md"))
-    uses_beads = os.path.isdir(os.path.join(root, ".beads"))
 
     # Rule 1: ceremony gate
     if tool == "Skill":
@@ -190,6 +200,21 @@ def main():
              "See the installed _shared/orchestration.md.")
 
     if tool == "Bash":
+        cmd = tool_input.get("command") or ""
+        scan, pscan = bash_scans(cmd)
+        # A leading `cd <path>` re-anchors the git context for the commit
+        # gate and for resolving relative write targets (retro 2026-07-23-15).
+        # Rules A2/A keep the spawn cwd's root/onboarded: an out-of-tree cd
+        # must never disarm the orchestrator write block (kickback PTU-1).
+        # ponytail: single leading cd only; chained cds and subshell
+        # `(cd x && ...)` shapes fall back to the spawn cwd — iterate leading
+        # segments if a retro shows them in the field.
+        ecwd = cwd
+        m = re.match(r"\s*cd\s+([^\s;&|]+)\s*(?:&&|;|\n)", pscan)
+        if m:
+            dest = os.path.expandvars(os.path.expanduser(m.group(1)))
+            ecwd = dest if os.path.isabs(dest) else os.path.join(cwd, dest)
+
         # Rule A2: orchestrator Bash-mutation block (the Bash loophole in rule A).
         # ponytail: heuristic — catches sed -i/perl -i/patch and redirect/tee into
         # project-tree paths; cp/mv and exotic shapes are out of scope until a retro
@@ -202,17 +227,26 @@ def main():
                      "dispatch the owning persona. For orchestrator-territory files "
                      "(CLAUDE.md, .claude/) use the Edit/Write tools."
                      + segment_note(cmd, scan, m.start()))
-            # Redirect/tee targets are resolved from pscan, where quoted spans
-            # keep their content: a quoted scratchpad target must resolve to
-            # its real (out-of-tree) path, and a quoted project-tree target
-            # must still deny (retro 2026-07-20-08).
-            for m in re.finditer(r"(?:^|[\s|;&])\d*>{1,2}(?!=)\s*([^\s;&|)]+)|\btee\s+(?:-a\s+)?([^\s;&|-][^\s;&|]*)", pscan):
-                target = m.group(1) or m.group(2)
+            # Redirect/tee STRUCTURE is detected on scan (quoted words are
+            # data — a commit message saying "tee" is not a tee command);
+            # the TARGET characters are read from pscan at the same offsets,
+            # where quoted content survives, so a quoted scratchpad target
+            # resolves out-of-tree and a quoted project-tree target still
+            # denies (retro 2026-07-20-08 + kickback round).
+            for m in re.finditer(r"(?:^|[\s|;&])\d*>{1,2}(?!=)|\btee(?=\s)", scan):
+                if m.group(0).endswith("tee"):
+                    t = re.match(r"\s+(?:-a\s+)?([^\s;&|-][^\s;&|]*)",
+                                 pscan[m.end():])
+                else:
+                    t = re.match(r"\s*([^\s;&|)]+)", pscan[m.end():])
+                if not t:
+                    continue
+                target = t.group(1)
                 if target.startswith(("&", "/dev/")):
                     continue
                 expanded = os.path.expandvars(os.path.expanduser(target))
                 resolved = os.path.realpath(expanded if os.path.isabs(expanded)
-                                            else os.path.join(cwd, expanded))
+                                            else os.path.join(ecwd, expanded))
                 if resolved == root or resolved.startswith(root + os.sep):
                     deny("Orchestrator Bash edit blocked: writing into the project "
                          "tree via redirect/tee in an onboarded team project is "
@@ -234,16 +268,20 @@ def main():
         # with a bd-style alphanumeric suffix and optional dotted children
         # (myrepo-wccvo, myrepo-0vao3.2). Own-prefix-only keeps hyphenated
         # English ("well-tested") from passing as a bead reference.
+        # The commit is judged against the repo the command runs in (ecwd,
+        # honoring a leading cd — retro 2026-07-23-15), not the spawn cwd.
+        broot = git_root(ecwd) or os.path.realpath(ecwd)
         commit = re.search(r"\bgit\s+commit\b", cmd)
-        if (uses_beads
-                and commit
+        if (commit
+                and broot != os.path.realpath(REPO_DIR)
+                and os.path.isdir(os.path.join(broot, ".beads"))
                 and re.search(r"(^|\s)(-[a-zA-Z]*m|--message)\b", cmd)
                 and "[no-bead]" not in cmd
                 and not re.search(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b", cmd)
-                and not re.search(r"\b" + re.escape(bead_prefix(root))
+                and not re.search(r"\b" + re.escape(bead_prefix(broot))
                                   + r"-[a-z0-9]+(?:\.\d+)*\b", cmd, re.I)):
             deny("This repo uses beads: commit messages must reference a bead "
-                 "id (e.g. proj-42 or " + bead_prefix(root) + "-ab1c2). If this "
+                 "id (e.g. proj-42 or " + bead_prefix(broot) + "-ab1c2). If this "
                  "commit genuinely has no bead, include the literal token "
                  "[no-bead]." + segment_note(cmd, scan, commit.start()))
 
@@ -324,6 +362,14 @@ def _self_check():
     heredoc = 'cat > "<scratch>/pr.md" <<EOF\nbody with > x.md\nEOF'
     assert not run({"tool_name": "Bash", "tool_input": {"command": heredoc}}, onboarded)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'echo hi > "<root>/src/x.txt"'}}, onboarded)
+    # A2 invariant (kickback PTU-1): a leading cd — real or nonexistent —
+    # never disarms the write guard for targets inside the onboarded spawn tree
+    assert run({"tool_name": "Bash", "tool_input": {"command": "cd <scratch> && echo hi > <root>/src/x.txt"}}, onboarded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": "cd /no/such/dir && echo x > <root>/src/x.py"}}, onboarded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": "cd /tmp && sed -i '' s/a/b/ <root>/f.css"}}, onboarded)
+    # quoted `tee`/`<<EOF` are data (kickback reviewers #1/#2)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "docs: explain tee usage [no-bead]"'}}, onboarded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": 'echo "<<EOF"\necho hi > <root>/src/x.txt\nEOF'}}, onboarded)
     # Rule 2: subagent bd create denied; orchestrator, beads:*, and bd update allowed
     bd = {"tool_name": "Bash", "tool_input": {"command": "bd create 'thing'"}}
     assert run(dict(bd, agent_id="a1"))

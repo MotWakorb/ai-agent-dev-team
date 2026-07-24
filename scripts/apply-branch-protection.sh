@@ -63,10 +63,23 @@ print(json.dumps({
 PY
 )"
 
-existing_id="$(gh api "repos/${repo}/rulesets" | python3 -c '
+# includes_parents=false: org-level parent rulesets can share the name but
+# 404 on a repo-level PUT. --paginate concatenates page arrays ([..][..]),
+# so the parser raw-decodes each page; source_type filter is belt-and-braces.
+existing_id="$(gh api --paginate "repos/${repo}/rulesets?includes_parents=false" | python3 -c '
 import json, sys
-matches = [r["id"] for r in json.load(sys.stdin)
-           if r.get("name") == sys.argv[1]]
+text = sys.stdin.read()
+decoder = json.JSONDecoder()
+items, idx = [], 0
+while idx < len(text):
+    if text[idx].isspace():
+        idx += 1
+        continue
+    page, idx = decoder.raw_decode(text, idx)
+    items.extend(page)
+matches = [r["id"] for r in items
+           if r.get("name") == sys.argv[1]
+           and r.get("source_type") in (None, "Repository")]
 print(matches[0] if matches else "")
 ' "$RULESET_NAME")"
 
