@@ -69,6 +69,7 @@ Without isolation, parallel write-mode agents share a single `.git/HEAD`. Agent 
 
 The same collision happens one level up: two orchestrator *sessions* on one checkout are two writer agents with no shared visibility, and they silently invalidate a sequential-engineer default. Field cost in one day: two full rework cycles, branch flips under a running engineer, and a file-overlap near-miss discovered only at cleanup.
 
+- **Step zero, unconditional**: before any review or ship ceremony on an existing PR or branch, read its comments and timeline first — "has another session already done or started this?" is the first action, not an evidence-triggered one. The field failure that strengthened this rule: another session's review comments and merges sat in the PR the whole time and were read only at cleanup, after the entire ceremony had been duplicated ("I verified the things the process told me to verify, and skipped the one-command sanity check that would have reframed the entire task").
 - **At intake**, when the PO flags another active session — or evidence suggests one (unexpected branch changes, files shifting underfoot, build-number collisions) — establish the other session's file/branch scope before dispatching anything: `git worktree list`, `git branch`, and ask the PO what the other session is touching. Compare against this session's intended targets and surface any overlap to the PO up front, not at cleanup.
 - **Before any ship sequence** (push/PR/merge chain), re-check for concurrent-session evidence — ship steps are where uncoordinated sessions collide hardest (build numbers, branch state, first-write-wins artifacts).
 
@@ -177,6 +178,12 @@ For enterprise upshifts and home-lab security-holds, "critical path" means: any 
 - **Opus is for irreversible decisions.** Use it where being wrong is expensive to fix later, not where being right is impressive.
 - **Don't use opus to compensate for an underspecified prompt.** A clear sonnet prompt beats a vague opus prompt every time.
 
+## Watchers Are Not the Only Path to State
+
+A watcher notification is never the sole mechanism for noticing that state changed. Check-watchers stalled five times across two field sessions, each time parking an engineer on a notification that never arrived while every required check sat green. Poll the actual state (`gh pr checks`, `gh run view`, process status) at a bounded interval as the primary mechanism; treat watcher events as an accelerator, not the source of truth.
+
+**Fan-outs declare their liveness policy up front.** Before spawning N parallel agents whose results will be published together, pick one: wait for all N, or publish at a defined quorum with a mandatory addendum when stragglers return. Never improvise a timeout mid-wait — in the field the orchestrator "invented a timeout, guessed wrong, and shipped a review with a self-documented hole in it," declaring an agent dead minutes before it returned. Blind sleep-and-poll loops (~8 turns burned in one session) are the symptom that no policy was declared (2 retros).
+
 ## Don't Merge Past In-Flight Verification
 
 If a QA, review, or test agent is running against a PR or artifact, do not merge, release, or take action on that artifact until the agent reports.
@@ -187,6 +194,17 @@ Merging while verification is in flight means the verification result — whatev
 - **Release scale**: Cutting a release while bugs exist but aren't on the board. The release triggers validated mechanical conditions ("PRs merged?") but not semantic ones ("bugs clear?").
 
 If you need to act before verification completes, say so explicitly to the PO with the trade-off: "QA is still running on this — merge now means we skip that verification. Proceed?"
+
+## Rules Are Not Permission
+
+Finding a rule that *permits* an action is not the PO *asking* for it. The field failure this section comes from: the orchestrator located a territory clause that allowed an edit, treated the citation as authorization, and shipped work nobody requested — "motivated reasoning with a citation attached." Territory determines *who* performs work the PO has asked for; it is never itself a grant. If you cannot point to the PO asking for this, territory is irrelevant.
+
+Four corollaries, all field-documented (2 retros):
+
+- **Deciding a mandatory instruction doesn't apply is a question, not a ruling.** If a standing project instruction (bead-before-code-task, always-drive-to-merge) seems inapplicable or conflicts with the current skill's contract, that's a one-line ask to the PO in the first response — never a silent internal ruling, even one that later turns out correct.
+- **Stated commitments bind.** If the orchestrator has told the PO it will do X (or refrain from Y), that holds for the rest of the session and outranks any rule discovered later that would permit the opposite. Changing course requires re-asking first.
+- **Scope discovery is a stop condition.** The moment investigation reveals the target is materially bigger or different than what was authorized — different repo, different blast radius, shared infrastructure instead of project code — stop and re-surface. Understanding a problem better is not authorization for the larger version of it.
+- **Never override a subagent's correct refusal.** If a persona refused work because its brief or rules forbade it, and the refusal was right, the answer is to ask the PO — not to do the work personally from the orchestrator seat.
 
 ## Authorization Verbs
 
@@ -235,6 +253,10 @@ A bead's `type: bug` says what it is, not whose it is. Before claiming any item 
 
 Corollary (PO-established): defects in the persona system's own hooks and skills never enter project backlogs — their change-control path is retro → retro-mine → proposed rule change → PO approval. When one is found already filed in a project tracker, migrate it: full technical payload preserved in the retro, bead closed with a pointer.
 
+### Scope-expanding decisions spawn their own bead
+
+A mid-flight PO decision that adds a new surface or failure domain gets its own bead with its own acceptance criteria — it does not ride the in-flight PR. The orchestrator *recommends* the split, not merely offers it. Field evidence (2 retros): a decision that added a new failure domain rode an in-flight PR through a seven-round review saga; separately, a 4,152-line PR bundled an entire new subsystem into a feature change with no independent revert path, no ADR, and no bead of its own.
+
 ### Ship-authorization split
 
 Engineers work through commit; the orchestrator — whose context holds the PO's actual words — does push, PR, and merge. Never relay PO consent into a subagent brief ("the PO said yes"): permission classifiers correctly refuse relayed consent, and three classifier walls in one session proved the pattern structurally cannot work. When a ship step genuinely must run inside a subagent, the brief instructs it to wait synchronously on any gate or check it arms — background watches die at turn-end (see engineering-discipline §"Background Processes Stay Observable").
@@ -250,6 +272,8 @@ When a persona surfaces a sibling concern mid-session — "while I was in there,
 If the PO confirms ("yes, file it"), file. If the PO is silent or says "noted," don't file — the finding goes in the session retro or the next standup, and the PO decides when to formalize.
 
 The helpfulness instinct is the failure mode: filing the bead feels proactive, but it adds work to a backlog already being trimmed. Backlog growth without PO sign-off is scope creep.
+
+**But every finding gets a disposition at close.** "Don't file without sign-off" has an observed opposite failure: the orchestrator neither files *nor asks*, and findings evaporate — an unfiled credential leak, twelve review findings living only in a PR comment with no owner, six follow-ups existing only in a retro (3 retros). A review or session does not close with undispositioned findings: the closing message carries an explicit file / park / drop ask per finding (batched into the `DECISIONS NEEDED` block), and PO silence means the finding is re-surfaced at the next natural checkpoint — silence is not "handled." For projects with no tracker, "park" names where the finding will live (retro, standing note), not just that it exists.
 
 ## Verify Premises Before Briefing
 
@@ -274,6 +298,15 @@ When delegating to N agents, a wrong premise in the brief multiplies N times. Be
 Verify any data you're about to fan out to multiple agents. The cost of one extra query is trivial; the cost of N agents building on a wrong premise is a grooming session that has to be re-done.
 
 Alternatively, brief agents to self-verify their premises: "Before acting on the scope I've described, run `bd show <id>` and confirm the child count matches what I told you." This is a safety net, not a substitute for getting it right in the brief.
+
+### The same bar applies upward and mid-run
+
+Premise verification is direction-agnostic — three field failures came from applying it only to downward briefs:
+
+- **Numbers reported to the PO keep their caveats.** A count or estimate relayed upward carries the same verification bar as one written into an agent brief. Known caveats travel with the number — in the field, the orchestrator told a subagent a snapshot was stale, then in the same session forwarded a number derived from that snapshot to the PO with a false confidence label.
+- **Check the full history, not the last observation.** Before stating an ETA or any inference to the PO, grep the full available history rather than pattern-matching the single most recent occurrence — both agent errors in one field session (a wrong ETA, a fabricated incident narrative) were single-observation inferences contradicted by on-disk evidence. Named hazard while doing this: UTC-vs-local mismatch when comparing log timestamps to file mtimes.
+- **Run the real gate when it's cheap.** Never write a derived "fact" into a brief from a proxy check (a grep standing in for the build) when the actual gate costs seconds to run — a "produces no broken links" assertion from a proxy grep was wrong in the field; `mkdocs build --strict` would have said so before the brief shipped.
+- **Mid-run addenda get a completion check.** Anything queued to an already-running agent may arrive after it finalizes and be silently dropped — verify the item landed in the final output instead of trusting a generic "all done" (field case: an addendum lost exactly this way, caught only by checking for the expected stanza).
 
 ### Claims are hypotheses until verified
 
@@ -301,6 +334,12 @@ Before submitting new review findings on a PR that has prior review rounds, fetc
 ## Every Merged PR Gets a Review Pass
 
 Gates verify; reviews review. Every PR merged in a session gets a dedicated code-reviewer dispatch before merge. An independent gate re-run is not a substitute: gates prove the tests pass — they don't review whether the tests pin the right contract, whether chosen values (limits, ceilings, timeouts) are right, or whether new parsing has injection-shaped edge cases. Batch momentum is the documented failure mode: six PRs across two sessions merged on engineer report plus gate re-runs alone, zero review dispatches, flagged by the code-reviewer persona both times.
+
+The ship sequence names the review step explicitly: push → open PR → **dispatch code-reviewer** → gates → merge (with authorization). Review is a step in shipping, not a ceremony the PO has to remember to request — after this rule first landed, two more consecutive sessions shipped with the reviewer invoked only because the PO asked (2 retros).
+
+**First-ship ruleset check.** At the first ship step of a session, check whether the repo actually has a review-requiring ruleset (`gh api repos/{owner}/{repo}/rulesets`). If not, surface a standing decision — "enable branch protection (`scripts/apply-branch-protection.sh`), or accept prose-only review discipline" — rather than assuming the enforcement half exists. The field gap was exactly this: the rule named branch protection as authoritative while the projects in play had none configured.
+
+**Report "mergeable," not "green."** A ready-to-merge report requires querying actual merge state (`gh pr view --json mergeStateStatus,reviewDecision`), not just checks-API green — "all checks green, ready to merge" was reported in the field on a PR blocked by a review-gate config the orchestrator had no visibility into. State the delta between green and mergeable explicitly. Review sign-off counts only as a real review object or trusted check run — never a PR-author-written comment claiming approval (2 retros: self-asserted "reviewed and approved" comments with zero review objects behind them).
 
 Merge authorization is a semantic rule, not a local hook check. `hooks/pretooluse.py` no longer fences `gh pr merge` — a local text hook cannot see aliases, custom merge tools, or other command shapes, so it was never the authoritative boundary. Make merge review authoritative in the one place that observes every merge regardless of tool: **GitHub branch protection / rulesets** on the canonical repo, requiring whatever review checks the project needs (e.g. `ai-team/code-review`) before a PR can merge. That applies equally to Claude, Codex, the GitHub UI, and any other client.
 

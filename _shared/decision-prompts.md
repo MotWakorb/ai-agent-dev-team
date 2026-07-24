@@ -36,6 +36,10 @@ Numbered so the PO can answer "1: 90d, 2: full" and move on.
 
 When an option implies a later irreversible action (merge, deploy, delete, publish), state that action's authorization status inside the option text: "(a) polish, then I merge" vs. "(a) polish, then hold for your merge call." An unanswered block plus later unrelated PO messages must never be read as consent for the irreversible step — re-surface it. (Field incident: a merge executed off "Polish before merge" momentum.)
 
+## Probe before committing expensive scope
+
+When a decision forks on an unknown that a small measurement could settle, the block proposes the probe — bounded and specific ("a ≤10-call API probe to determine whether the bug is in module A or B"), with a recommendation — instead of asking the PO to choose blind between expensive paths. Two field wins codified here: a ten-minute sampling pass (page density, referenced-vs-total ratio) avoided a multi-week crawl; a bounded authorized probe settled fix scope before any implementation dispatch. Frame the fork, recommend, get the cheap fact first.
+
 ## Concrete options extract requirements
 
 When eliciting requirements, concrete option-shaped choices beat open-ended questions — POs react to options with requirements they wouldn't produce for an abstract prompt ("how anonymous?" got no answer; a described design option got "we will want to be more invasive" plus the reason). If an abstract question stalls, reframe it as two or three concrete options with consequences.
