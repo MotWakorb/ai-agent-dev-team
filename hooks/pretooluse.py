@@ -206,12 +206,15 @@ def main():
         # gate and for resolving relative write targets (retro 2026-07-23-15).
         # Rules A2/A keep the spawn cwd's root/onboarded: an out-of-tree cd
         # must never disarm the orchestrator write block (kickback PTU-1).
-        # ponytail: single leading cd only; chained cds and subshell
-        # `(cd x && ...)` shapes fall back to the spawn cwd — iterate leading
-        # segments if a retro shows them in the field.
+        # Re-anchor ONLY when the leading cd is the command's sole cd: a
+        # second cd (or subshell cd) desyncs ecwd from the shell's real cwd
+        # (kickback PTU-5), so those shapes fall back to the spawn cwd.
+        # ponytail: known ceiling, parity with main — a sole cd INTO an
+        # onboarded tree from an un-onboarded spawn cwd is not judged at the
+        # cd target; PO scope decision if a retro shows it in the field.
         ecwd = cwd
         m = re.match(r"\s*cd\s+([^\s;&|]+)\s*(?:&&|;|\n)", pscan)
-        if m:
+        if m and len(re.findall(r"\bcd\s", scan)) == 1:
             dest = os.path.expandvars(os.path.expanduser(m.group(1)))
             ecwd = dest if os.path.isabs(dest) else os.path.join(cwd, dest)
 
@@ -367,6 +370,8 @@ def _self_check():
     assert run({"tool_name": "Bash", "tool_input": {"command": "cd <scratch> && echo hi > <root>/src/x.txt"}}, onboarded)
     assert run({"tool_name": "Bash", "tool_input": {"command": "cd /no/such/dir && echo x > <root>/src/x.py"}}, onboarded)
     assert run({"tool_name": "Bash", "tool_input": {"command": "cd /tmp && sed -i '' s/a/b/ <root>/f.css"}}, onboarded)
+    # chained cds bail the re-anchor to the spawn cwd (kickback PTU-5)
+    assert run({"tool_name": "Bash", "tool_input": {"command": "cd /tmp && cd <root>/src && echo x > evil.py"}}, onboarded)
     # quoted `tee`/`<<EOF` are data (kickback reviewers #1/#2)
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "docs: explain tee usage [no-bead]"'}}, onboarded)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'echo "<<EOF"\necho hi > <root>/src/x.txt\nEOF'}}, onboarded)

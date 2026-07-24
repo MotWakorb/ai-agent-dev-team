@@ -218,6 +218,23 @@ class HookTest(unittest.TestCase):
         self.assert_denied(
             f"cd /tmp && sed -i '' s/a/b/ {root}/f.css", cwd=root)
 
+    def test_chained_cd_back_into_tree_is_denied(self):
+        # Kickback PTU-5: only the first cd was captured, so a later cd
+        # re-entering the tree desynced relative-target resolution. More
+        # than one cd bails the re-anchor back to the spawn cwd.
+        root = self.mkdir(onboarded=True)
+        self.assert_denied(
+            f"cd /tmp && cd {root}/src && echo x > evil.py", cwd=root)
+        self.assert_denied(
+            f"cd /tmp && cd {root} && echo x | tee src/evil.py", cwd=root)
+
+    def test_single_cd_scratchpad_relative_redirect_still_allowed(self):
+        # The fix-3 win holds: one leading cd out of tree, relative target
+        # resolves at the cd destination, not the spawn cwd.
+        root = self.mkdir(onboarded=True)
+        scratch = self.mkdir()
+        self.assert_allowed(f"cd {scratch} && echo hi > x.txt", cwd=root)
+
     # --- The hook's own self-check stays green
 
     def test_self_check_passes(self):
