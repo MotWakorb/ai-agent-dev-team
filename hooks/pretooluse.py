@@ -63,6 +63,53 @@ def git_root(path):
     return None
 
 
+def bash_scans(cmd):
+    """Length-preserving scan variants of a Bash command.
+
+    Heredoc bodies and quoted spans are data, not syntax: a `>` inside a
+    heredoc body or a quoted string must not read as a redirect (field
+    false-positives, retros 2026-07-20-08 and earlier). Both scans blank
+    heredoc body lines (the `<<EOF` line itself stays — its redirects are
+    real syntax). `scan` blanks quoted spans entirely, for detecting command
+    syntax; `pscan` keeps quoted content minus shell metachars, so quoted
+    redirect targets and cd destinations stay resolvable as paths. Both
+    preserve offsets into the original command for segment attribution.
+    """
+    cmd = re.sub(
+        r"(<<-?\s*(['\"]?)(\w+)\2[^\n]*\n)(.*?)(\n\3)(?=\n|$)",
+        lambda m: m.group(1) + re.sub(r"[^\n]", " ", m.group(4)) + m.group(5),
+        cmd, flags=re.S)
+    quoted = r"'[^']*'|\"[^\"]*\""
+    scan = re.sub(quoted, lambda m: " " * len(m.group(0)), cmd)
+    pscan = re.sub(quoted,
+                   lambda m: re.sub(r"[<>|;&`\\]", "",
+                                    m.group(0)[1:-1]).ljust(len(m.group(0))),
+                   cmd)
+    return scan, pscan
+
+
+def segment_note(cmd, scan, pos):
+    """Fix for denied compound commands (retro 2026-07-20-22): a PreToolUse
+    hook can only deny the whole call, so when a compound command is denied,
+    name the segment that triggered it and tell the agent to re-run the
+    innocent setup segments separately."""
+    cuts = [0]
+    for m in re.finditer(r"&&|\|\||[;&|\n]", scan):
+        cuts += [m.start(), m.end()]
+    cuts.append(len(cmd))
+    spans = [(cuts[i], cuts[i + 1]) for i in range(0, len(cuts), 2)
+             if cmd[cuts[i]:cuts[i + 1]].strip()]
+    if len(spans) < 2:
+        return ""
+    start, end = next(((a, b) for a, b in spans if a <= pos < b), spans[-1])
+    culprit = " ".join(cmd[start:end].split())
+    if len(culprit) > 120:
+        culprit = culprit[:117] + "..."
+    return (" This denial applies to the whole compound command, but only "
+            f"this segment triggered it: `{culprit}`. The other segments "
+            "were NOT run — re-run them as separate commands.")
+
+
 def bead_prefix(root):
     """The repo's own bead prefix: .beads/config.yaml issue-prefix, else dirname."""
     try:
@@ -87,6 +134,17 @@ def main():
     cwd = data.get("cwd") or os.getcwd()
     agent_id = data.get("agent_id")  # absent => main agent (orchestrator)
     agent_type = data.get("agent_type") or ""
+
+    cmd = scan = pscan = ""
+    if tool == "Bash":
+        cmd = tool_input.get("command") or ""
+        scan, pscan = bash_scans(cmd)
+        # Git context follows the command's own cwd, not the spawn cwd
+        # (retro 2026-07-23-15): honor a leading `cd <path> &&` / `;`.
+        m = re.match(r"\s*cd\s+([^\s;&|]+)\s*(?:&&|;|\n)", pscan)
+        if m:
+            dest = os.path.expandvars(os.path.expanduser(m.group(1)))
+            cwd = dest if os.path.isabs(dest) else os.path.join(cwd, dest)
 
     root = git_root(cwd) or os.path.realpath(cwd)
     onboarded = os.path.isfile(os.path.join(root, "COMPONENTS.md"))
@@ -132,22 +190,23 @@ def main():
              "See the installed _shared/orchestration.md.")
 
     if tool == "Bash":
-        cmd = tool_input.get("command") or ""
-        # Quoted spans are data, not command syntax: a `>=` or backtick inside a
-        # bd description must not read as a redirect (field false-positive, 3x).
-        scan = re.sub(r"'[^']*'|\"[^\"]*\"", " ", cmd)
-
         # Rule A2: orchestrator Bash-mutation block (the Bash loophole in rule A).
         # ponytail: heuristic — catches sed -i/perl -i/patch and redirect/tee into
         # project-tree paths; cp/mv and exotic shapes are out of scope until a retro
         # shows them in the field.
         if agent_id is None and onboarded:
-            if re.search(r"\b(sed|perl)\s+(-\w+\s+)*-\w*i|(?:^|[;&|]\s*)patch\s", scan):
+            m = re.search(r"\b(sed|perl)\s+(-\w+\s+)*-\w*i|(?:^|[;&|]\s*)patch\s", scan)
+            if m:
                 deny("Orchestrator Bash edit blocked: in-place file edits (sed -i, "
                      "perl -i, patch) in an onboarded team project are persona work — "
                      "dispatch the owning persona. For orchestrator-territory files "
-                     "(CLAUDE.md, .claude/) use the Edit/Write tools.")
-            for m in re.finditer(r"(?:^|[\s|;&])\d*>{1,2}(?!=)\s*([^\s;&|)]+)|\btee\s+(?:-a\s+)?([^\s;&|-][^\s;&|]*)", scan):
+                     "(CLAUDE.md, .claude/) use the Edit/Write tools."
+                     + segment_note(cmd, scan, m.start()))
+            # Redirect/tee targets are resolved from pscan, where quoted spans
+            # keep their content: a quoted scratchpad target must resolve to
+            # its real (out-of-tree) path, and a quoted project-tree target
+            # must still deny (retro 2026-07-20-08).
+            for m in re.finditer(r"(?:^|[\s|;&])\d*>{1,2}(?!=)\s*([^\s;&|)]+)|\btee\s+(?:-a\s+)?([^\s;&|-][^\s;&|]*)", pscan):
                 target = m.group(1) or m.group(2)
                 if target.startswith(("&", "/dev/")):
                     continue
@@ -157,24 +216,27 @@ def main():
                 if resolved == root or resolved.startswith(root + os.sep):
                     deny("Orchestrator Bash edit blocked: writing into the project "
                          "tree via redirect/tee in an onboarded team project is "
-                         "persona work — dispatch the owning persona.")
+                         "persona work — dispatch the owning persona."
+                         + segment_note(cmd, scan, m.start()))
 
         # Rule 2: persona bead firewall (beads:* agent types manage their own tasks)
         if agent_id is not None and not agent_type.startswith("beads:"):
-            if re.search(r"\bbd\s+(create|close|delete|reopen)\b", cmd):
+            m = re.search(r"\bbd\s+(create|close|delete|reopen)\b", cmd)
+            if m:
                 deny("Board state transitions are orchestrator territory. "
                      "Report this as a finding in your response — the "
                      "orchestrator surfaces it to the PO, who decides whether "
                      "to file or close a bead. (bd update on beads you own is "
-                     "allowed.)")
+                     "allowed.)" + segment_note(cmd, scan, m.start()))
 
         # Rule 3: bead-referenced commits. Two accepted id shapes: any
         # prefix with a numeric suffix (proj-42), or the repo's OWN prefix
         # with a bd-style alphanumeric suffix and optional dotted children
         # (myrepo-wccvo, myrepo-0vao3.2). Own-prefix-only keeps hyphenated
         # English ("well-tested") from passing as a bead reference.
+        commit = re.search(r"\bgit\s+commit\b", cmd)
         if (uses_beads
-                and re.search(r"\bgit\s+commit\b", cmd)
+                and commit
                 and re.search(r"(^|\s)(-[a-zA-Z]*m|--message)\b", cmd)
                 and "[no-bead]" not in cmd
                 and not re.search(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b", cmd)
@@ -183,7 +245,7 @@ def main():
             deny("This repo uses beads: commit messages must reference a bead "
                  "id (e.g. proj-42 or " + bead_prefix(root) + "-ab1c2). If this "
                  "commit genuinely has no bead, include the literal token "
-                 "[no-bead].")
+                 "[no-bead]." + segment_note(cmd, scan, commit.start()))
 
 
 def _self_check():
@@ -191,12 +253,14 @@ def _self_check():
     import tempfile
 
     def run(payload, setup=None):
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, \
+                tempfile.TemporaryDirectory() as scratch:
             os.makedirs(os.path.join(tmp, ".git"))
             if setup:
                 setup(tmp)
             payload = json.loads(json.dumps(payload).replace("<root>", tmp)
-                                 .replace("<rootname>", os.path.basename(tmp)))
+                                 .replace("<rootname>", os.path.basename(tmp))
+                                 .replace("<scratch>", scratch))
             payload.setdefault("cwd", tmp)
             proc = subprocess.run(
                 [sys.executable, os.path.abspath(__file__)],
@@ -254,6 +318,12 @@ def _self_check():
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'bd update x-1 --notes "score >= 0.5 uses `median`"'}}, onboarded)
     assert not run({"tool_name": "Bash", "tool_input": {"command": "awk $1 >= 3 file"}}, onboarded)
     assert not run({"tool_name": "Bash", "tool_input": {"command": "echo 'sed -i is blocked'"}}, onboarded)
+    # A2 false positives (retro 2026-07-20-08): heredoc bodies and quoted
+    # out-of-tree targets are not project-tree writes; quoted in-tree targets
+    # still deny
+    heredoc = 'cat > "<scratch>/pr.md" <<EOF\nbody with > x.md\nEOF'
+    assert not run({"tool_name": "Bash", "tool_input": {"command": heredoc}}, onboarded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": 'echo hi > "<root>/src/x.txt"'}}, onboarded)
     # Rule 2: subagent bd create denied; orchestrator, beads:*, and bd update allowed
     bd = {"tool_name": "Bash", "tool_input": {"command": "bd create 'thing'"}}
     assert run(dict(bd, agent_id="a1"))
@@ -274,6 +344,10 @@ def _self_check():
     assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "otherproj-wccvo: fix"'}}, beaded)
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "zork-ab1c2: fix"'}}, beaded_with_prefix)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-wccvo: fix"'}}, beaded_with_prefix)
+    # Rule 3 follows the command's cwd (retro 2026-07-23-15): a leading
+    # `cd <path> &&` re-anchors the git context away from the spawn cwd
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'cd <scratch> && git commit -m "no beads there"'}}, beaded)
+    assert run({"tool_name": "Bash", "tool_input": {"command": 'cd <root> && git commit -m "still gated"'}, "cwd": "<scratch>"}, beaded)
     # Rule 4 removed: gh pr merge is no longer fenced, in any repo including this one.
     assert not run({
         "tool_name": "Bash",
