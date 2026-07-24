@@ -59,6 +59,16 @@ This applies to every persona writing code: the engineer producing the fix, the 
 
 Any milestone or bead touching a browser/app-facing surface requires rendering that surface — `/verify`, `/run`, or a screenshot — before it can be declared done. Green tests plus review approval do not substitute: a full web milestone shipped in the field without anyone ever rendering it, and a simulator launch that exercises none of the changed behavior is liveness theater, not verification. For features gated on third-party data, the smoke must span the data categories the feature claims to handle, not one happy-path item.
 
+### Test Claims Name Their Layer
+
+Every test-based claim states which layer proved it: pure logic, lifecycle/scheduling behavior, component wiring, consumer integration, or rendered browser behavior. "Tests pass" without a layer is the largest evidence-mismatch cluster in the retro corpus (6 retros): green per-layer suites reported as feature health while the feature was entirely broken end-to-end; synthetic DOM tests with hand-supplied dimensions presented as proof of rendered reachability; unit-fixture counts described as integration proof for operational failure paths. At intake, acceptance criteria map to the layer capable of proving them — a criterion only a real browser can prove does not get claimed from a unit test.
+
+Three enforcement points:
+
+- **Layer-spanning features cross their seam before "healthy" or merge.** A feature spanning UI↔API↔external boundaries is not reportable as working — and does not merge — without at least one check that crosses the real seam (E2E test, live-surface render, golden-fixture pipeline run). Green suites on each side of an uncrossed seam verify the layers, not the feature. Field cost: five review rounds reporting green suites on a feature that was never wired end-to-end.
+- **Regression tests are proven red-without-fix.** A test that pins a fix demonstrates it: revert the fix, watch the test fail, restore. "N tests pass" is count, not coverage — the field tell was a vacuous assert that could never fail independently.
+- **Distribution-shaped problems validate against sampled data.** When correctness depends on a data distribution (collision rates, matching, dedup), tests that mirror the reviewer's cited examples pin the examples, not the behavior — sample the real distribution. (Reviewer-side counterpart: method-based re-verification, `team-review/SKILL.md` §"Re-Review and Remediation Rounds".)
+
 ### Confirm the Deployed Artifact Before Hypothesizing a Regression
 
 Before forming a "the merged code regressed" hypothesis from a live/UI observation, confirm the artifact under test is the artifact actually deployed — check the running git SHA / bundle hash against what you think you shipped. Stale bundles masquerade as regressions and send investigations down the wrong branch.
@@ -101,6 +111,10 @@ Environment traps propagate forward, not per-agent: the first time a trap is dis
 ## Version Currency
 
 When hardcoding a version for a dependency, action, base image, or tool, check the latest release first. Do not assume a version is current — look it up. Stale versions are silent tech debt that compounds.
+
+## Concurrent PRs Share No Version Touchpoints
+
+When more than one PR is in flight from the same base, per-PR lockstep version/CHANGELOG bumps are a structural conflict generator: every PR edits the same version files and changelog lines, and each merge forces a valueless rebase-and-reconcile round on the others (2 retros, two projects). Pick one before opening the second PR: pre-assign distinct version/build touchpoints, merge serially as each goes green, or use a non-conflicting changelog-fragment convention (one file per change, assembled at release). Flag an existing lockstep-bump convention as the cause when these collisions appear — don't just keep paying the rebase tax.
 
 ## Findings Are Backlog Candidates, Not Immediate Work
 

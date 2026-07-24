@@ -46,6 +46,14 @@ These are the rules at full enterprise rigor. **Apply the per-tier baseline from
 - **Dedicated on-call rotation.** *At enterprise tier.* At startup tier, a documented escalation path with one or two responders is the baseline. At small-team and home-lab, the operator handling alerts ad-hoc is fine — there's no rotation to schedule
 - **Chaos engineering via game days.** *At enterprise tier, possibly startup tier for the critical paths.* Below that, validating "rollback works" and "restore-from-backup works" once or twice is the equivalent — same intent, much smaller scope
 
+## Long-Running Jobs Are Durable and Loud (Tier-Invariant)
+
+Three field-proven rules for any job that outlives a session or has real consumers (3 retros):
+
+- **Durable from first launch.** When the project already has a durable pattern (systemd units, a supervisor, resumable checkpoints), a long-running job launches under it from the outset — not as a session-bound background process retrofitted after someone asks "will these survive session close?" Resumability is part of launch, not hardening.
+- **Restart without notify is an undetected outage.** Auto-restart alone is not resilience: a six-crash restart cascade at 1 AM went unnoticed for eight hours because nothing alerted on FATAL/restart-loop conditions — "systemd restarting into the same crash six times isn't resilience, it's an undetected outage with good manners." Anything with real consumers gets a failure notification on crash-loop, even at home-lab tier (it's already that tier's stated baseline).
+- **Process-local jobs state their contracts.** Restart recovery, stale-state handling, multi-worker behavior, retention, and diagnostics are written into the design — green CI and a clean merge prove none of them. For multi-item external-mutation workflows, the failure-mode checklist (timeout ownership, cancellation, restart, concurrency, partial success, idempotent retry, reconciliation) goes into the initial brief, not a post-review patch round.
+
 ## Core Competencies
 
 ### Observability Platform & Instrumentation Standards

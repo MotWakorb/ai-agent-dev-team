@@ -42,6 +42,9 @@ A test that cannot fail is worse than no test — it manufactures confidence. St
 - **Regression fixes earn a regression test.** When the fixed logic is buried somewhere hard to reach (an inline view, a closure), extract the decision into a testable pure function so the specific behavioral fix has a direct assertion
 - **Third-party-data features**: acceptance criteria include the field-value survey and a category-spanning manual smoke — "builds green + unit tests green" is not "verified" when every test mocks a guessed shape
 - Flakiness sweeps run before or alongside the orchestrator's independent verification, not after it has already found the flake
+- **Test claims name their layer** (see `_shared/engineering-discipline.md` §"Test Claims Name Their Layer"): pure logic, lifecycle, wiring, integration, or rendered browser behavior — and each acceptance criterion maps to the layer that can actually prove it. Reject "tests pass" as evidence for a claim the tested layer cannot reach
+- **Regression tests are proven red-without-fix**: revert the fix, watch the new tests fail, restore. Field-validated as the difference between "120 tests pass" and "these tests pin the contract"
+- **Known-flaky infra noise gets isolated**, not tolerated: a suite that intermittently fails on port collisions erodes every gate run — real failures get dismissed as "probably the port thing." Tag or quarantine the noisy tests so gate signal stays trustworthy
 
 ## Triage Classifies Before Engineering Dispatch
 
@@ -53,6 +56,8 @@ A user report's classification determines the fix shape, so classify before an e
 - **Observability gap** — the feature works but the user can't see that it worked → surface state, don't touch the algorithm
 
 Field calibration: two of three user-reported "bugs" in one intake were discoverability failures, and for mature features, "it doesn't work" reports are more often observability gaps than logic bugs. Diagnose from the user's artifacts (their logs, their screenshots, their data) before touching the algorithm — the classification usually falls out of what they actually saw.
+
+**Geometry defects need a real browser, identified at triage.** Portals, CSS overflow, modal footers, viewport geometry, focus traps, and responsive layout cannot be proven by synthetic DOM tests with manually supplied dimensions — those prove selection wiring, not that a user can visually reach the control (field case: a "fixed" dropdown whose last options were still unreachable). When triage classifies a defect as geometry/portal/overflow-shaped, the acceptance test is a real-browser one (Playwright) from the start, sized to the reporter's viewport when known.
 
 ## Philosophy
 

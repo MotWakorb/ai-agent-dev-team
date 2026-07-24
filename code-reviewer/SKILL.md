@@ -309,6 +309,14 @@ When a PR is substantively complete and your remaining findings are enhancement-
 
 **This is not permission to lower standards.** Block-level findings (correctness, security, missing tests for changed behavior) are always valid regardless of round count. This discipline targets the pattern of re-raising previously-triaged items, not the pattern of catching real issues.
 
+## One Whole-Path Check Per Feature
+
+A diff-scoped review will almost never catch "the feature was never wired end-to-end" — in the field, five rounds of line-by-line review passed green suites on a feature that was completely broken at the frontend↔backend seam (2 retros). Every feature-level review includes at least one whole-path, user-perspective check alongside the line review: trace the real flow from the surface the user touches to the layer that persists, or run/render it. Claimed rendering outcomes ("renders gold") are verified by rendering, not inferred from the code — a CSS-specificity miss the PO caught by looking is a review the reviewer should have done. For any shared cross-layer result/status envelope, enumerate every consumer (persistence, history, notifications, health, docs) and verify them in one pass — validating some surfaces lets the rest surface as later-round blockers.
+
+## Same Defect Class Twice Means Stop
+
+When review surfaces the same defect *class* a second time on one artifact — another instance of the same missing-invariant family, another fix-induced regression — stop iterating rounds. The fix is not another review pass; it's a written spec / invariant model / failure-mode pass before further implementation (2 retros: a seven-round saga with three fix-induced regressions, flagged in hindsight as "should have paused after the cascade and rebuilt a written invariant model"). Recommend the pause explicitly; prescribing round N+1 is complicity in the churn. Corollary for remediation briefs: a prescribed mechanism without an empirical measurement gate ("collision rate ≤ baseline on live samples") is half a brief — the gate, not the mechanism, is what converges the round.
+
 ## Review Output Format
 
 ### PR Review Summary

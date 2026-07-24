@@ -428,3 +428,17 @@ Findings map to beads:
 - Low / Nit → Priority 3-4, type chore, backlog
 
 **Creating a bead is not starting the work.** Beads go into the backlog for the PO to prioritize and sequence. Do not propose immediately working on findings after creating them. The review produces a prioritized list — the PO decides what gets worked and when, through grooming and planning ceremonies.
+
+**No review closes with undispositioned findings.** If beads aren't created (no database, PO deferred, ad-hoc review outside this skill), the closing message still carries an explicit file / park / drop ask per finding — twelve findings living only in a PR comment with no owner is the documented failure mode. Silence from the PO is not "handled"; re-surface at the next checkpoint. This applies to any multi-persona review the orchestrator runs, whether or not it was invoked through this skill.
+
+## Re-Review and Remediation Rounds
+
+Rules for every round after the first (3 retros: a seven-round goalpost-shifting saga; a 2×-cost re-review scope guess; repeat findings recurring across passes):
+
+- **Ask for scope before spawning.** "Re-review PR #N" carries no scope signal, and delta-verify vs. full fresh pass is a 2×-cost decision the PO should make. One line: "Delta-verify the fixes, or full fresh pass?"
+- **Freeze an acceptance matrix before the first remediation round**: finding / user impact / frozen expected behavior / required evidence / disposition (fix-now, accepted follow-up, dropped). The matrix — not each round's mood — defines the merge boundary.
+- **Subsequent rounds are delta-only against the matrix.** A reviewer may add a blocker only when the delta introduces a concrete regression, new evidence invalidates an accepted premise, or the finding is a genuinely new, never-triaged block-level defect — code-reviewer §"Review History Discipline"'s block-level exception takes precedence over delta scope. What delta-only forbids is re-litigating items the matrix already dispositioned, not catching real defects. Accepted follow-ups stay visible but cannot silently return to the merge gate.
+- **Re-verify, don't re-trust.** Delta-round personas verify prior findings closed with file:line evidence at the new head AND fresh-review the new code; reviewers re-run their original measurement method (fresh samples) rather than re-checking previously cited examples — method-based re-verification caught two regressions in the field that example-checking would have approved. The orchestrator re-confirms headline closures independently.
+- **No full-fleet re-dispatch for small remediations.** Once the matrix exists, a small fix gets a targeted delta review by the personas whose findings it touches — not another ten-persona ceremony.
+- **Tier-boundary drift is a scope flag.** When rounds start producing architectural hardening beyond the component's declared deployment tier, propose freezing scope to tier-appropriate fixes ("fix concrete correctness regressions; track distributed durability separately; once accepted, do not reopen") instead of waiting for the PO to notice the churn.
+- **Consolidate public output.** Public PR communication is at most three consolidated comments — initial blocker matrix, remediation verification, final terminal verdict. Persona debate belongs in internal synthesis, not a public trail of shifting intermediate positions.
