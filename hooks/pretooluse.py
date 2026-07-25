@@ -269,24 +269,50 @@ def main():
         # Rule 3: bead-referenced commits. Two accepted id shapes: any
         # prefix with a numeric suffix (proj-42), or the repo's OWN prefix
         # with a bd-style alphanumeric suffix and optional dotted children
-        # (myrepo-wccvo, myrepo-0vao3.2). Own-prefix-only keeps hyphenated
-        # English ("well-tested") from passing as a bead reference.
-        # The commit is judged against the repo the command runs in (ecwd,
-        # honoring a leading cd — retro 2026-07-23-15), not the spawn cwd.
+        # (myrepo-wccvo, myrepo-0vao3.2, myrepo-09x38.17). Own-prefix-only
+        # keeps hyphenated English ("well-tested") from passing as a bead
+        # reference. The commit is judged against the repo the command runs
+        # in (ecwd, honoring a leading cd — retro 2026-07-23-15), not the
+        # spawn cwd. The check follows the message wherever it travels:
+        # -m/--message text in the command itself, or the -F/--file message
+        # file read at hook time — the gate is on bead-reference presence,
+        # not on delivery mechanism. Messages the hook cannot see (stdin
+        # via `-F -`, a file written later in the same compound command,
+        # paths with shell substitutions) fail open: never block on a
+        # message we cannot read.
         broot = git_root(ecwd) or os.path.realpath(ecwd)
         commit = re.search(r"\bgit\s+commit\b", cmd)
         if (commit
                 and broot != os.path.realpath(REPO_DIR)
-                and os.path.isdir(os.path.join(broot, ".beads"))
-                and re.search(r"(^|\s)(-[a-zA-Z]*m|--message)\b", cmd)
-                and "[no-bead]" not in cmd
-                and not re.search(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b", cmd)
-                and not re.search(r"\b" + re.escape(bead_prefix(broot))
-                                  + r"-[a-z0-9]+(?:\.\d+)*\b", cmd, re.I)):
-            deny("This repo uses beads: commit messages must reference a bead "
-                 "id (e.g. proj-42 or " + bead_prefix(broot) + "-ab1c2). If this "
-                 "commit genuinely has no bead, include the literal token "
-                 "[no-bead]." + segment_note(cmd, scan, commit.start()))
+                and os.path.isdir(os.path.join(broot, ".beads"))):
+            def has_bead_ref(text):
+                return ("[no-bead]" in text
+                        or re.search(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b", text)
+                        or re.search(r"\b" + re.escape(bead_prefix(broot))
+                                     + r"-[a-z0-9]+(?:\.\d+)*\b", text, re.I))
+
+            message = None
+            if re.search(r"(^|\s)(-[a-zA-Z]*m|--message)\b", cmd):
+                message = cmd
+            else:
+                fm = re.search(r"(?:^|\s)(?:-[a-zA-Z]*F|--file)(?:=|\s+)"
+                               r"('[^']*'|\"[^\"]*\"|\S+)", cmd)
+                if fm:
+                    target = fm.group(1).strip("'\"")
+                    if target != "-" and not re.search(r"[$`]", target):
+                        path = os.path.expanduser(target)
+                        if not os.path.isabs(path):
+                            path = os.path.join(ecwd, path)
+                        try:
+                            with open(path) as f:
+                                message = f.read()
+                        except OSError:
+                            message = None
+            if message is not None and not has_bead_ref(message):
+                deny("This repo uses beads: commit messages must reference a bead "
+                     "id (e.g. proj-42 or " + bead_prefix(broot) + "-ab1c2). If this "
+                     "commit genuinely has no bead, include the literal token "
+                     "[no-bead]." + segment_note(cmd, scan, commit.start()))
 
 
 def _self_check():
@@ -393,12 +419,33 @@ def _self_check():
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-0vao3.2: fix"'}}, beaded)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "add well-tested helper"'}}, beaded)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "otherproj-wccvo: fix"'}}, beaded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-09x38.17: fix"'}}, beaded)
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "zork-ab1c2: fix"'}}, beaded_with_prefix)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'git commit -m "<rootname>-wccvo: fix"'}}, beaded_with_prefix)
     # Rule 3 follows the command's cwd (retro 2026-07-23-15): a leading
     # `cd <path> &&` re-anchors the git context away from the spawn cwd
     assert not run({"tool_name": "Bash", "tool_input": {"command": 'cd <scratch> && git commit -m "no beads there"'}}, beaded)
     assert run({"tool_name": "Bash", "tool_input": {"command": 'cd <root> && git commit -m "still gated"'}, "cwd": "<scratch>"}, beaded)
+    # Rule 3 via -F/--file: the message file is validated too — bead id,
+    # [no-bead], or numeric id in the file passes; a file without any
+    # denies; stdin and not-yet-written files fail open
+    def beaded_msgfile(content):
+        def setup(tmp):
+            beaded(tmp)
+            with open(os.path.join(tmp, "msg.txt"), "w") as f:
+                f.write(content.replace("<rootname>", os.path.basename(tmp)))
+        return setup
+
+    fci = {"tool_name": "Bash", "tool_input": {"command": "git commit -F <root>/msg.txt"}}
+    assert run(fci, beaded_msgfile("fix the thing\n"))
+    assert not run(fci, beaded_msgfile("fix thing\n\n(bead <rootname>-wccvo)\n"))
+    assert not run(fci, beaded_msgfile("fix thing (bead <rootname>-0vao3.2)\n"))
+    assert not run(fci, beaded_msgfile("proj-42: fix\n"))
+    assert not run(fci, beaded_msgfile("chore [no-bead]\n"))
+    assert run({"tool_name": "Bash", "tool_input": {"command": "git commit --file=<root>/msg.txt"}}, beaded_msgfile("fix the thing\n"))
+    assert run({"tool_name": "Bash", "tool_input": {"command": "git commit -F msg.txt"}}, beaded_msgfile("fix the thing\n"))  # relative to cwd
+    assert not run({"tool_name": "Bash", "tool_input": {"command": "git commit -F <root>/absent.txt"}}, beaded)
+    assert not run({"tool_name": "Bash", "tool_input": {"command": "git commit -F -"}}, beaded)
     # Rule 4 removed: gh pr merge is no longer fenced, in any repo including this one.
     assert not run({
         "tool_name": "Bash",
