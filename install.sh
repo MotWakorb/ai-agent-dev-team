@@ -12,11 +12,61 @@ MODE="symlink"
 PROJECT_DIR=""
 LOCAL_SETTINGS=0
 
+# --- Self-update: pull the latest installer before installing (best-effort) ---
+# Only runs when REPO_DIR is a git checkout with an "origin" remote and a
+# clean working tree. Anything else (dirty tree, offline, diverged, or a
+# tarball download with no .git) prints a short note and falls through to
+# installing the local copy — self-update must never abort an install.
+self_update() {
+  if [ -n "${AI_TEAM_INSTALLER_UPDATED:-}" ]; then
+    return 0
+  fi
+  if ! command -v git >/dev/null 2>&1 || [ ! -d "${REPO_DIR}/.git" ]; then
+    echo "  SKIP: self-update (not a git checkout)"
+    return 0
+  fi
+  if ! git -C "$REPO_DIR" remote get-url origin >/dev/null 2>&1; then
+    echo "  SKIP: self-update (no origin remote)"
+    return 0
+  fi
+  if [ -n "$(git -C "$REPO_DIR" status --porcelain 2>/dev/null)" ]; then
+    echo "  SKIP: self-update (local changes in ${REPO_DIR})"
+    return 0
+  fi
+
+  echo "Checking for installer updates..."
+  local before after script_name
+  before="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)" || return 0
+  if ! git -C "$REPO_DIR" pull --ff-only --quiet 2>/dev/null; then
+    echo "  WARN: self-update failed (offline or diverged from origin) — installing local version"
+    return 0
+  fi
+  after="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)" || return 0
+
+  if [ "$before" = "$after" ]; then
+    echo "  OK: already up to date (${before:0:7})"
+    return 0
+  fi
+  echo "  UPDATE: pulled ${before:0:7}..${after:0:7}"
+
+  # If the installer script itself changed, re-exec the fresh copy — bash
+  # reads scripts incrementally, so continuing to run a file that just
+  # changed under us is unsafe. AI_TEAM_INSTALLER_UPDATED guards the loop.
+  script_name="$(basename "$0")"
+  if git -C "$REPO_DIR" diff --name-only "$before" "$after" -- "$script_name" | grep -q .; then
+    echo "  Installer script updated — re-running the latest version..."
+    AI_TEAM_INSTALLER_UPDATED=1 exec bash "${REPO_DIR}/${script_name}" "$@"
+  fi
+}
+
+self_update "$@"
+echo ""
+
 usage() {
   echo "Usage: ./install.sh [OPTIONS]"
   echo ""
   echo "Options:"
-  echo "  (default)        Symlink skills into ~/.claude/skills/ (git pull updates automatically)"
+  echo "  (default)        Symlink skills into ~/.claude/skills/ — re-run to self-update, symlinks also track 'git pull'"
   echo "  --copy           Copy skills instead of symlink (for customization)"
   echo "  --project <dir>  Install into <dir>/.claude and <dir>/.agents instead of globally —"
   echo "                   available only in that project. Forces copy mode so the install"
@@ -349,7 +399,7 @@ echo ""
 
 if [ -n "$PROJECT_DIR" ]; then
   echo "Project-scoped install: the team is available only in ${PROJECT_DIR}."
-  echo "Files are copies — after 'git pull' in this repo, re-run:"
+  echo "Files are copies — re-run the installer to refresh them (it self-updates automatically):"
   echo "  ./install.sh --project ${PROJECT_DIR}$([ "$LOCAL_SETTINGS" -eq 1 ] && echo " --local")"
   if [ "$LOCAL_SETTINGS" -eq 1 ]; then
     echo ""
@@ -366,10 +416,11 @@ if [ -n "$PROJECT_DIR" ]; then
     echo "Commit .claude/, .agents/, CLAUDE.md, and AGENTS.md to share the team."
   fi
 elif [ "$MODE" = "symlink" ]; then
-  echo "Skills are symlinked — run 'git pull' in this repo to update them."
+  echo "Skills are symlinked — this installer self-updates on every run, and"
+  echo "symlinked installs also pick up any plain 'git pull' in this repo."
   echo "To customize a skill without affecting the repo, copy it manually:"
   echo "  cp -R ${SKILLS_DIR}/<skill> ${SKILLS_DIR}/<skill>-custom"
 else
-  echo "Skills are copied — changes to the repo won't auto-update."
-  echo "Run './install.sh --copy' again after 'git pull' to update."
+  echo "Skills are copied — changes to the repo won't auto-update in place."
+  echo "Run './install.sh --copy' again to refresh (it pulls the latest automatically)."
 fi

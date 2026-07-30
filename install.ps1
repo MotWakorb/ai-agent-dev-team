@@ -3,8 +3,10 @@
 .SYNOPSIS
     AI Agent Dev Team — Claude Code + Codex PowerShell Installer
 .DESCRIPTION
-    Symlinks skills into ~/.claude/skills/ and ~/.agents/skills/ so git pull updates automatically.
-    Use -Copy to copy instead of symlink (for customization).
+    Symlinks skills into ~/.claude/skills/ and ~/.agents/skills/. The installer
+    self-updates its repo checkout on every run (best-effort); symlinked
+    installs also pick up any plain git pull. Use -Copy to copy instead of
+    symlink (for customization).
 .PARAMETER Copy
     Copy skills instead of symlink (for customization without affecting the repo)
 .EXAMPLE
@@ -20,6 +22,69 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $RepoDir = $PSScriptRoot
+
+# --- Self-update: pull the latest installer before installing (best-effort) ---
+# Only runs when RepoDir is a git checkout with an "origin" remote and a
+# clean working tree. Anything else (dirty tree, offline, diverged, or a
+# tarball download with no .git) prints a short note and falls through to
+# installing the local copy — self-update must never abort an install.
+#
+# Unlike install.sh, this does not re-exec: PowerShell parses the whole
+# script into memory before running it, so continuing to run the
+# already-loaded script body is safe even if the file on disk just changed.
+# If install.ps1 itself was updated, we just tell the user to re-run it.
+function Invoke-SelfUpdate {
+    if ($env:AI_TEAM_INSTALLER_UPDATED) { return }
+    if (-not (Test-Path (Join-Path $RepoDir '.git'))) {
+        Write-Host '  SKIP: self-update (not a git checkout)'
+        return
+    }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Host '  SKIP: self-update (git not found)'
+        return
+    }
+    $origin = git -C $RepoDir remote get-url origin 2>$null
+    if (-not $origin) {
+        Write-Host '  SKIP: self-update (no origin remote)'
+        return
+    }
+    $status = git -C $RepoDir status --porcelain 2>$null
+    if ($status) {
+        Write-Host "  SKIP: self-update (local changes in $RepoDir)"
+        return
+    }
+
+    Write-Host 'Checking for installer updates...'
+    $before = (git -C $RepoDir rev-parse HEAD 2>$null)
+    git -C $RepoDir pull --ff-only --quiet 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '  WARN: self-update failed (offline or diverged from origin) - installing local version'
+        return
+    }
+    $after = (git -C $RepoDir rev-parse HEAD 2>$null)
+
+    if ($before -eq $after) {
+        Write-Host "  OK: already up to date ($($before.Substring(0,7)))"
+        return
+    }
+    Write-Host "  UPDATE: pulled $($before.Substring(0,7))..$($after.Substring(0,7))"
+
+    $scriptName = Split-Path $PSCommandPath -Leaf
+    $changed = git -C $RepoDir diff --name-only $before $after -- $scriptName 2>$null
+    if ($changed) {
+        Write-Host "  NOTE: $scriptName itself changed - re-run ./install.ps1 to use the latest version."
+        Write-Host '  Continuing with the version already loaded for this run.'
+    }
+}
+
+try {
+    Invoke-SelfUpdate
+}
+catch {
+    Write-Host "  WARN: self-update encountered an error ($_) - installing local version"
+}
+Write-Host ''
+
 $ClaudeSkillsDir = Join-Path (Join-Path $HOME '.claude') 'skills'
 $CodexSkillsDir = Join-Path (Join-Path $HOME '.agents') 'skills'
 $SkillDestinations = @($ClaudeSkillsDir, $CodexSkillsDir)
@@ -252,7 +317,8 @@ Write-Host "  Retro dir: $RetroDir"
 Write-Host ''
 
 if ($Mode -eq 'symlink') {
-    Write-Host "Skills are symlinked - run 'git pull' in this repo to update them."
+    Write-Host 'Skills are symlinked - this installer self-updates on every run, and'
+    Write-Host "symlinked installs also pick up any plain 'git pull' in this repo."
     Write-Host 'To customize a skill without affecting the repo, copy it manually:'
     Write-Host "  Copy-Item -Recurse $ClaudeSkillsDir\<skill> $ClaudeSkillsDir\<skill>-custom"
     Write-Host ''
@@ -260,6 +326,6 @@ if ($Mode -eq 'symlink') {
     Write-Host 'or enabling Developer Mode (Settings > Update & Security > For developers).'
 }
 else {
-    Write-Host "Skills are copied - changes to the repo won't auto-update."
-    Write-Host "Run './install.ps1 -Copy' again after 'git pull' to update."
+    Write-Host "Skills are copied - changes to the repo won't auto-update in place."
+    Write-Host "Run './install.ps1 -Copy' again to refresh (it pulls the latest automatically)."
 }
