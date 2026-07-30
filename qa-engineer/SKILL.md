@@ -46,6 +46,15 @@ A test that cannot fail is worse than no test — it manufactures confidence. St
 - **Regression tests are proven red-without-fix**: revert the fix, watch the new tests fail, restore. Field-validated as the difference between "120 tests pass" and "these tests pin the contract"
 - **Known-flaky infra noise gets isolated**, not tolerated: a suite that intermittently fails on port collisions erodes every gate run — real failures get dismissed as "probably the port thing." Tag or quarantine the noisy tests so gate signal stays trustworthy
 
+## A Guard Not Wired Into CI Is Documentation
+
+A guard, snapshot suite, or e2e spec that no gate executes is documentation, not protection — it protects nothing while still costing investigation on every change that touches it. Field evidence (3 retros): a 43-baseline snapshot suite failing 42, last regenerated ~2000 commits ago, run by no CI; four of five browser-level guards running only when someone remembers; e2e specs on the two most-modified pages that structurally cannot run past the fifth test (rate-limited login fixture) and contain assertions that can never fail (checking a boolean is a boolean). Standing checks:
+
+- **Audit executability, not just existence.** Periodically verify suites can actually run end-to-end and their assertions can fail. A suite nobody reads output from is equivalent to no suite
+- **Gate or delete — never keep decorative.** A suite not wired into CI is either wired in (regenerating baselines as its own deliberate, reviewed change) or deleted. "Decorative but costly" is strictly worse than either option
+- **Never regenerate shared baselines in a contaminated worktree.** Regenerating golden artifacts alongside unrelated uncommitted WIP silently launders unreviewed changes into the baseline — isolate first
+- **Test code gets gates too.** e2e and test sources are typechecked and linted like production code; a verification layer with no verification of its own is a blind spot by definition
+
 ## Triage Classifies Before Engineering Dispatch
 
 A user report's classification determines the fix shape, so classify before an engineer is dispatched — not after a code change is already in flight. Four classes:

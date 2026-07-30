@@ -66,8 +66,21 @@ Every test-based claim states which layer proved it: pure logic, lifecycle/sched
 Three enforcement points:
 
 - **Layer-spanning features cross their seam before "healthy" or merge.** A feature spanning UI↔API↔external boundaries is not reportable as working — and does not merge — without at least one check that crosses the real seam (E2E test, live-surface render, golden-fixture pipeline run). Green suites on each side of an uncrossed seam verify the layers, not the feature. Field cost: five review rounds reporting green suites on a feature that was never wired end-to-end.
-- **Regression tests are proven red-without-fix.** A test that pins a fix demonstrates it: revert the fix, watch the test fail, restore. "N tests pass" is count, not coverage — the field tell was a vacuous assert that could never fail independently.
+- **Regression tests are proven red-without-fix — against the dangerous mutant specifically.** A test that pins a fix demonstrates it: revert the fix, or apply the exact mutation the guard exists to catch, and watch the test fail before restoring. Assertions on source *text* are not assertions on *behavior* — a text-level guard in the field failed on formatting that couldn't matter and passed the semantic drift it was written to stop. A guard that passes the dangerous mutant is worse than no guard, because it reads as coverage (2 retros; the mutation-test countermeasure worked every time it was applied). "N tests pass" is count, not coverage — the field tell was a vacuous assert that could never fail independently.
 - **Distribution-shaped problems validate against sampled data.** When correctness depends on a data distribution (collision rates, matching, dedup), tests that mirror the reviewer's cited examples pin the examples, not the behavior — sample the real distribution. (Reviewer-side counterpart: method-based re-verification, `team-review/SKILL.md` §"Re-Review and Remediation Rounds".)
+
+### A Count Is Verified When Its Method Is
+
+A number is not verified because a command ran — it's verified when the method is checked against what the number claims. Both field failures met the "comes from a command run in-session" bar and were still wrong: a grep across a two-object response counted both countries' providers and shipped as one country's roster, and four consecutive source-line counts were wrong because CSS comments were counted as code (2 retros). Before a count reaches the PO, a brief, or a bead title: confirm the pattern excludes comments (or justify their inclusion), confirm the aggregation spans exactly the objects the claim names, and give decision-grade numbers a second independent method. Never put an unverified count in a bead or commit title — titles get quoted long after their caveats are lost.
+
+### Completion Claims Are Re-Derived at Writing Time
+
+A commit message, doc, or status report claiming completion ("all ten route pages are on the new scale," "moved onto the roles," "gates green") is derived from the artifact at the moment of writing — the current diff, the actual rendered state — never carried forward from an earlier assessment. A doc that overstates completion causes the next reader to stop looking: in the field, a commit message claimed ten routes done with eight still off-scale, and a guidelines doc claimed three classes migrated when one was (2 retros).
+
+Two specifics:
+
+- **"Gates green" names the tree it ran against.** Green on a branch whose worktree carries another epic's uncommitted WIP is not green on the commits in isolation. When the worktree is contaminated, verify an isolated staged tree (`git write-tree` + `git archive`) before claiming green — the one agent who did this caught a branch that had never built from a clean checkout.
+- **"Blocked" and "not yet done" are distinct categories.** Never fold unfixed items into an "expected to look wrong" or "known limitation" framing when some are simply not done yet. Report which is which; the PO's "why are we not fixing things that the verification popped?" is the cost of conflating them.
 
 ### Confirm the Deployed Artifact Before Hypothesizing a Regression
 

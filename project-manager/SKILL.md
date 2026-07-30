@@ -121,6 +121,14 @@ When creating issues in beads, every issue should include:
 
 When scoping any milestone with a user-facing feature, destructive operation, or information-architecture change, file the docs/ADR bead as part of the milestone's definition-of-done — not as deferred follow-up. Milestones have shipped with no operator runbook for a destructive feature and no ADR for an IA split because no bead ever owned them; the gap is an intake failure, not a writing failure. Related intake hygiene: follow-up bugs against a closed epic get the epic reopened or land at top level — never parented under a closed epic.
 
+## Bead Records Update at the Moment State Changes
+
+A bead's record is a premise handed to the next session — keep it current at the moment reality changes, not at next pickup. Field evidence (2 retros): a bead partially fixed as a side effect of other work kept its stale description until the next session started from a wrong premise; ten of sixteen beads audited had no recorded outcome, including one whose work was complete while the bead sat `IN_PROGRESS` with three wrong figures in its description.
+
+- **Side-effect progress annotates immediately.** When work elsewhere partially resolves a bead, annotate it then — the annotation is part of that work's completion, not a future grooming task
+- **Closure records a verified outcome.** Close with what was delivered and how it was verified, not a bare state flip. A completed bead left `IN_PROGRESS` is a false premise on the board
+- **Descriptions carry no stale figures.** Counts and claims in bead descriptions follow the same verification bar as briefs — correct them when found wrong, don't work around them
+
 ## Consuming Persona Output
 
 Persona findings are expert input, not automatic work orders. The PM's job is to filter this input through a user-value lens before anything becomes a bead.
