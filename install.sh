@@ -14,15 +14,25 @@ LOCAL_SETTINGS=0
 
 # --- Self-update: pull the latest installer before installing (best-effort) ---
 # Only runs when REPO_DIR is a git checkout with an "origin" remote and a
-# clean working tree. Anything else (dirty tree, offline, diverged, or a
-# tarball download with no .git) prints a short note and falls through to
-# installing the local copy — self-update must never abort an install.
+# clean working tree. Anything else (dirty tree, offline, diverged, a pinned
+# tag/detached HEAD, or a tarball download with no .git) prints a short note
+# and falls through to installing the local copy — self-update must never
+# abort an install. Set AI_TEAM_NO_SELF_UPDATE=1 to opt out entirely.
 self_update() {
   if [ -n "${AI_TEAM_INSTALLER_UPDATED:-}" ]; then
     return 0
   fi
-  if ! command -v git >/dev/null 2>&1 || [ ! -d "${REPO_DIR}/.git" ]; then
+  if [ -n "${AI_TEAM_NO_SELF_UPDATE:-}" ]; then
+    echo "  SKIP: self-update (AI_TEAM_NO_SELF_UPDATE set)"
+    return 0
+  fi
+  # -e, not -d: a git-worktree checkout has a .git *file* (pointer), not a dir.
+  if [ ! -e "${REPO_DIR}/.git" ]; then
     echo "  SKIP: self-update (not a git checkout)"
+    return 0
+  fi
+  if ! command -v git >/dev/null 2>&1; then
+    echo "  SKIP: self-update (git not found)"
     return 0
   fi
   if ! git -C "$REPO_DIR" remote get-url origin >/dev/null 2>&1; then
@@ -35,10 +45,12 @@ self_update() {
   fi
 
   echo "Checking for installer updates..."
-  local before after script_name
+  local before after
   before="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)" || return 0
-  if ! git -C "$REPO_DIR" pull --ff-only --quiet 2>/dev/null; then
-    echo "  WARN: self-update failed (offline or diverged from origin) — installing local version"
+  # GIT_TERMINAL_PROMPT=0: a private origin with no cached credentials must
+  # fail fast into the WARN path below, not hang on an interactive prompt.
+  if ! GIT_TERMINAL_PROMPT=0 git -C "$REPO_DIR" pull --ff-only --quiet 2>/dev/null; then
+    echo "  WARN: self-update failed (offline, diverged from origin, or not on a branch — e.g. a pinned tag) — installing local version"
     return 0
   fi
   after="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)" || return 0
@@ -52,10 +64,11 @@ self_update() {
   # If the installer script itself changed, re-exec the fresh copy — bash
   # reads scripts incrementally, so continuing to run a file that just
   # changed under us is unsafe. AI_TEAM_INSTALLER_UPDATED guards the loop.
-  script_name="$(basename "$0")"
-  if git -C "$REPO_DIR" diff --name-only "$before" "$after" -- "$script_name" | grep -q .; then
+  # Diff against the canonical literal filename (not "$0"/basename) so a
+  # differently-named symlink/alias invocation still detects the change.
+  if git -C "$REPO_DIR" diff --name-only "$before" "$after" -- install.sh | grep -q .; then
     echo "  Installer script updated — re-running the latest version..."
-    AI_TEAM_INSTALLER_UPDATED=1 exec bash "${REPO_DIR}/${script_name}" "$@"
+    AI_TEAM_INSTALLER_UPDATED=1 exec bash "${REPO_DIR}/install.sh" "$@"
   fi
 }
 
@@ -65,8 +78,12 @@ echo ""
 usage() {
   echo "Usage: ./install.sh [OPTIONS]"
   echo ""
+  echo "Before installing (any mode below), the installer self-updates this repo"
+  echo "checkout (git pull --ff-only, best-effort). Set AI_TEAM_NO_SELF_UPDATE=1"
+  echo "to skip that and install the local checkout as-is."
+  echo ""
   echo "Options:"
-  echo "  (default)        Symlink skills into ~/.claude/skills/ — re-run to self-update, symlinks also track 'git pull'"
+  echo "  (default)        Symlink skills into ~/.claude/skills/ (symlinks also track any plain 'git pull')"
   echo "  --copy           Copy skills instead of symlink (for customization)"
   echo "  --project <dir>  Install into <dir>/.claude and <dir>/.agents instead of globally —"
   echo "                   available only in that project. Forces copy mode so the install"

@@ -3,10 +3,12 @@
 .SYNOPSIS
     AI Agent Dev Team — Claude Code + Codex PowerShell Installer
 .DESCRIPTION
-    Symlinks skills into ~/.claude/skills/ and ~/.agents/skills/. The installer
-    self-updates its repo checkout on every run (best-effort); symlinked
-    installs also pick up any plain git pull. Use -Copy to copy instead of
-    symlink (for customization).
+    Symlinks skills into ~/.claude/skills/ and ~/.agents/skills/. Before
+    installing (any mode), the installer self-updates its repo checkout
+    (git pull --ff-only, best-effort) — set AI_TEAM_NO_SELF_UPDATE=1 to skip
+    that and install the local checkout as-is. Symlinked installs also pick
+    up any plain git pull. Use -Copy to copy instead of symlink (for
+    customization).
 .PARAMETER Copy
     Copy skills instead of symlink (for customization without affecting the repo)
 .EXAMPLE
@@ -25,16 +27,27 @@ $RepoDir = $PSScriptRoot
 
 # --- Self-update: pull the latest installer before installing (best-effort) ---
 # Only runs when RepoDir is a git checkout with an "origin" remote and a
-# clean working tree. Anything else (dirty tree, offline, diverged, or a
-# tarball download with no .git) prints a short note and falls through to
-# installing the local copy — self-update must never abort an install.
+# clean working tree. Anything else (dirty tree, offline, diverged, a pinned
+# tag/detached HEAD, or a tarball download with no .git) prints a short note
+# and falls through to installing the local copy — self-update must never
+# abort an install. Set AI_TEAM_NO_SELF_UPDATE=1 to opt out entirely.
 #
 # Unlike install.sh, this does not re-exec: PowerShell parses the whole
 # script into memory before running it, so continuing to run the
 # already-loaded script body is safe even if the file on disk just changed.
 # If install.ps1 itself was updated, we just tell the user to re-run it.
+# Canonical literal name — not derived from $PSCommandPath — so a
+# differently-named symlink/alias invocation still detects the self-change.
+$InstallerScriptName = 'install.ps1'
+
 function Invoke-SelfUpdate {
     if ($env:AI_TEAM_INSTALLER_UPDATED) { return }
+    if ($env:AI_TEAM_NO_SELF_UPDATE) {
+        Write-Host '  SKIP: self-update (AI_TEAM_NO_SELF_UPDATE set)'
+        return
+    }
+    # Test-Path matches both a .git directory and a .git file (git-worktree
+    # checkouts use a pointer file), same as install.sh's `-e` check.
     if (-not (Test-Path (Join-Path $RepoDir '.git'))) {
         Write-Host '  SKIP: self-update (not a git checkout)'
         return
@@ -56,12 +69,29 @@ function Invoke-SelfUpdate {
 
     Write-Host 'Checking for installer updates...'
     $before = (git -C $RepoDir rev-parse HEAD 2>$null)
-    git -C $RepoDir pull --ff-only --quiet 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host '  WARN: self-update failed (offline or diverged from origin) - installing local version'
+    if ($LASTEXITCODE -ne 0 -or -not $before) {
+        Write-Host '  WARN: self-update failed (could not resolve current commit) - installing local version'
         return
     }
+
+    # GIT_TERMINAL_PROMPT=0: a private origin with no cached credentials must
+    # fail fast into the WARN path below, not hang on an interactive prompt.
+    # Scoped to this call only, then restored.
+    $prevPrompt = $env:GIT_TERMINAL_PROMPT
+    $env:GIT_TERMINAL_PROMPT = '0'
+    git -C $RepoDir pull --ff-only --quiet 2>$null
+    $pullExit = $LASTEXITCODE
+    $env:GIT_TERMINAL_PROMPT = $prevPrompt
+    if ($pullExit -ne 0) {
+        Write-Host '  WARN: self-update failed (offline, diverged from origin, or not on a branch - e.g. a pinned tag) - installing local version'
+        return
+    }
+
     $after = (git -C $RepoDir rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $after) {
+        Write-Host '  WARN: self-update failed (could not resolve updated commit) - installing local version'
+        return
+    }
 
     if ($before -eq $after) {
         Write-Host "  OK: already up to date ($($before.Substring(0,7)))"
@@ -69,10 +99,9 @@ function Invoke-SelfUpdate {
     }
     Write-Host "  UPDATE: pulled $($before.Substring(0,7))..$($after.Substring(0,7))"
 
-    $scriptName = Split-Path $PSCommandPath -Leaf
-    $changed = git -C $RepoDir diff --name-only $before $after -- $scriptName 2>$null
+    $changed = git -C $RepoDir diff --name-only $before $after -- $InstallerScriptName 2>$null
     if ($changed) {
-        Write-Host "  NOTE: $scriptName itself changed - re-run ./install.ps1 to use the latest version."
+        Write-Host "  NOTE: $InstallerScriptName itself changed - re-run ./install.ps1 to use the latest version."
         Write-Host '  Continuing with the version already loaded for this run.'
     }
 }
