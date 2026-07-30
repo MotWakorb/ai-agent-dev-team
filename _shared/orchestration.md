@@ -65,6 +65,10 @@ Default to `isolation: "worktree"` for any agent that *might* commit. The cost o
 
 Without isolation, parallel write-mode agents share a single `.git/HEAD`. Agent A's `git checkout` changes the branch under Agent B's `git add` and `git commit`. The resulting state — commits on the wrong branch, stray parent commits, orphaned work — is recoverable but expensive and sometimes silent.
 
+### Isolation covers all shared runtime resources, not file lists
+
+When deciding serial vs. parallel dispatch, enumerate every runtime resource the agents share — scratch directories, deploy targets and containers, test databases, the git index — not just file-list overlap. Disjoint file lists do not make a shared worktree safe: the git index is still shared (one agent's staged file was nearly swept into a sibling's commit after the orchestrator had confidently told the PO the arrangement was safe), and same-named scratch files silently overwrite (one agent's test log was clobbered mid-run by a sibling's). Give each dispatched agent its own scratch directory. A shared deploy target with no lock or lease means an agent can screenshot someone else's build and report it as its own result — briefing-paragraph discipline is prose, not a mechanism (2 retros).
+
 ### Concurrent-session intake check
 
 The same collision happens one level up: two orchestrator *sessions* on one checkout are two writer agents with no shared visibility, and they silently invalidate a sequential-engineer default. Field cost in one day: two full rework cycles, branch flips under a running engineer, and a file-overlap near-miss discovered only at cleanup.
@@ -265,6 +269,15 @@ Every ship or verification brief MUST include this verbatim:
 
 > "Keep every wait in the foreground and synchronous. Poll each gate at a bounded interval until it reaches a terminal state; do not arm a background watcher and end the turn. Return the final gate result and completion report in this same turn."
 
+## Frozen Constraints Bind Until Re-Frozen
+
+A frozen scope boundary — an acceptance matrix declared the merge boundary, a "chrome stays exactly as it is" constraint — is exceeded only by an explicit PO re-freeze decision, never by individually-justified additions. "Every addition was defensible" is exactly how frozen scopes stop being frozen: in the field a frozen acceptance matrix was exceeded twice, each addition locally justified (2 retros).
+
+Two corollaries:
+
+- **Frozen constraints bind the orchestrator's own artifacts.** A mockup is a specification, not a document about the app — a density-dial mockup that moved the frozen chrome was a proposal to move the chrome, and the PO had to catch it. Constraints enforced on dispatched engineers apply equally to orchestrator-authored mockups, specs, and interactive artifacts.
+- **Settled constraints are restated at kickoff.** When the PO settled a constraint earlier in the session ("chrome is frozen," two beads prior), surface it explicitly at the start of a related new request instead of letting it re-emerge through costly iteration — the constraint was available information the orchestrator held and didn't use.
+
 ## Findings From Personas Are Notes, Not Beads
 
 When a persona surfaces a sibling concern mid-session — "while I was in there, I noticed X" — the orchestrator's default is to surface it to the PO as a note, not to file a bead. Filing the bead implies a commitment to work the PO hasn't authorized.
@@ -274,6 +287,8 @@ If the PO confirms ("yes, file it"), file. If the PO is silent or says "noted," 
 The helpfulness instinct is the failure mode: filing the bead feels proactive, but it adds work to a backlog already being trimmed. Backlog growth without PO sign-off is scope creep.
 
 **But every finding gets a disposition at close.** "Don't file without sign-off" has an observed opposite failure: the orchestrator neither files *nor asks*, and findings evaporate — an unfiled credential leak, twelve review findings living only in a PR comment with no owner, six follow-ups existing only in a retro (3 retros). A review or session does not close with undispositioned findings: the closing message carries an explicit file / park / drop ask per finding (batched into the `DECISIONS NEEDED` block), and PO silence means the finding is re-surfaced at the next natural checkpoint — silence is not "handled." For projects with no tracker, "park" names where the finding will live (retro, standing note), not just that it exists.
+
+**Mid-session, twice-surfaced is the escalation trigger.** An item surfaced to the PO twice without an answer does not get a third identical surfacing — it goes into a `DECISIONS NEEDED` entry with a stated default ("defaulting to deferred unless you override by <checkpoint>"), and the chosen default is recorded when it fires. Silence must never silently expand scope or freeze a known regression in place: in the field, advisory items raised twice defaulted to deferred with no way to distinguish "deliberately deferred" from "didn't see it," scope grew because defer offers went unanswered, and a known accessibility regression was asked about three times across a session and never answered (2 retros).
 
 ## Verify Premises Before Briefing
 
@@ -286,12 +301,17 @@ When delegating to N agents, a wrong premise in the brief multiplies N times. Be
 - **Status**: If you report a bead or PR as being in a certain state, verify it at query time. Board state changes between sessions.
 - **Post-disconnect / post-gap re-verify**: After any disconnect, context compaction, summary handoff, or gap where state could have changed, re-query board and PR state before briefing the next agent. "Bead was open last we looked" is not a current premise. A stale brief built on a closed bead or merged PR sends the agent to fix work that's already shipped — and the resulting "not reproducible" close looks like new information rather than orchestrator error.
 - **HEAD over working tree**: When forming a brief that asserts "the engineer's pushed work is missing X" or "the engineer's pushed code does Y," verify against `git show <commit>:<file>` or `gh api .../files`, not the working tree. Working trees drift — reviewer contamination, partial reverts, uncommitted hotfixes, switched branches. HEAD is what's actually under review. A brief built on a contaminated working tree wastes engineer rounds and erodes the orchestrator's credibility when the asserted gap turns out not to exist.
+- **Cited identifiers exist**: Every path, line number, bead ID, or PR number entering a brief is verified to exist in-session — paths cited in review comments included. A nonexistent path from a review comment sent a writer to prove a negative it then over-generalized ("this file never existed"); a path-scoped negative result does not support a file-scoped claim. When tool output is truncated or ambiguous, re-run the command to get the real value — never reconstruct an identifier from memory. A fabricated ID in a brief is categorically worse than a bad inference (2 retros).
 
 ### Framing checks
 
 - **Source/environment**: When forwarding user-reported data (logs, error messages, screenshots), lead the brief with the source. Default assumption: reports come from customers in production. If the report is from our own local or internal environment, flag it explicitly — the absence of that flag means customer/production, and the engineer's investigation will be shaped accordingly.
 - **Already-shipped**: Before dispatching on a bead, verify the work hasn't already shipped. Quick check: `bd show <id>` and `git log --grep=<id>` or `gh pr list --search=<id>`. Beads can land closed in a prior session without their descriptions getting updated, and forwarding a stale brief produces a "not reproducible" close that looks like new information.
 - **Inherited premise**: When continuing prior agent work, the new agent inherits whatever framing the prior agent had. If the prior agent's framing was wrong, the rework compounds. Re-read the original PO message before re-dispatching; don't trust the prior brief as a source of truth.
+
+### Briefs label epistemic status
+
+A brief states as fact only what was verified in-session; everything else is written as a hypothesis with its evidence cited. Audit and guard output describes what an artifact *declares*, never what is live — the orchestrator's inference on top of it ("this rule is dead," "this is shadowed," "seed only runs on fresh init") is a hypothesis, and relaying it with the grammar of a finding is the documented failure mode (3 retros: a wrong seed-semantics premise written into a bead and brief as fact, a half-wrong CSS-specificity premise plus a badly overstated regeneration warning, audit declarations relayed as deletion instructions). Write "the audit reports X; confirm the render site and which declaration wins before choosing an approach" — never "X is dead, delete it." Hypotheses briefed as facts inherit the trust briefs are normally given: the recipient builds on them instead of checking them, and the error surfaces after ship instead of before.
 
 ### General rule
 
