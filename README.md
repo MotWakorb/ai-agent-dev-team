@@ -18,7 +18,7 @@ cd ai-agent-dev-team
 ./install.ps1
 ```
 
-The installers configure both tools: Claude Code skills go to `~/.claude/skills`, Codex skills go to `~/.agents/skills`, and each tool gets a managed orchestration block in its global instructions file. Updates are just `git pull` — symlinks pick up changes automatically. Re-run the installer when managed instruction or hook setup changes.
+The installers configure both tools: Claude Code skills go to `~/.claude/skills`, Codex skills go to `~/.agents/skills`, and each tool gets a managed orchestration block in its global instructions file. Both installers self-update this repo checkout (`git pull --ff-only`, best-effort) before every run, so re-running the installer keeps everything current — symlink installs also pick up any plain `git pull` on their own, since skills resolve through the symlink. Re-run the installer when managed instruction or hook setup changes. Set `AI_TEAM_NO_SELF_UPDATE=1` to skip the self-update pull and install the local checkout as-is (e.g. for pinned or reproducible runs).
 
 The installer also registers the shared `hooks/pretooluse.py` dispatcher for Claude Code in `~/.claude/settings.json` and for Codex CLI in `~/.codex/hooks.json`, converting mechanically decidable orchestration rules from prose to guarantees — see [Enforcement Hooks](#enforcement-hooks). On Windows, `install.ps1` registers the Codex hook; the Claude Code hook remains a gap.
 
@@ -224,7 +224,7 @@ Where the host supplies `agent_id`, the hook distinguishes orchestrator from sub
 
 **Bash:**
 ```bash
-./install.sh                        # Symlink (default) — git pull updates automatically
+./install.sh                        # Symlink (default) — self-updates this checkout, then installs
 ./install.sh --copy                 # Copy instead — for customization without affecting the repo
 ./install.sh --project <dir>        # Project-scoped install into <dir>/.claude (copies, committable)
 ./install.sh --project <dir> --local  # Project-scoped, personal (settings.local.json, gitignored)
@@ -274,7 +274,7 @@ This project uses semantic versioning at the system level. Releases are git tags
 grep -E "^name:|^version:" ~/.claude/skills/*/SKILL.md
 ```
 
-**Update to latest** (symlink installs pick up changes automatically):
+**Update to latest**: just re-run the installer — it self-updates this checkout (`git pull --ff-only`) before installing. Symlink installs also pick up any plain `git pull` on their own:
 ```bash
 cd /path/to/ai-agent-dev-team
 git pull
@@ -286,6 +286,7 @@ cd /path/to/ai-agent-dev-team
 git checkout v0.2.0    # or any tag
 # Symlink installs now resolve to that tag's content
 ```
+A checked-out tag leaves the repo in detached HEAD (or otherwise off a branch with an upstream), so the installer's self-update can't fast-forward — it prints a warning and installs the pinned content as-is instead of moving you off the tag. The pin holds until you check out a branch again.
 
 **If you installed with `--copy`**, re-run the installer after switching tags:
 ```bash
