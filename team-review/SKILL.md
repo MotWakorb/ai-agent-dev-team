@@ -3,7 +3,7 @@ name: team-review
 description: Parallel team review — spawns all ten persona agents to review existing work (code, architecture, design, infrastructure) simultaneously, then facilitates a team debate surfacing findings and decision points for the PO.
 when_to_use: code review, architecture review, security review, design review, comprehensive review, team review
 user-invocable: true
-version: 0.2.0
+version: 0.3.0
 ---
 
 # Team Review Session
@@ -88,6 +88,9 @@ Launch all 10 persona agents simultaneously using the Agent tool. **Spawn as `pe
 - The depth mode (quick or full)
 - An instruction to be critical — this is a review, not a rubber stamp
 - An instruction to flag disagreements with other personas' likely positions
+- The scope fence below, verbatim — reviews evaluate the target as given; they do not move the goalposts:
+
+  > "Scope fence: every finding must be anchored in the review target (file:line, section, or config key within it). Do not recommend fixes, refactors, or additions to code, systems, or processes outside the target, and do not expand the target to justify a finding. If you notice a real issue outside the boundary, record it as a one-line 'Out-of-scope observation' — no severity rating, no remediation design — and move on."
 
 #### Security Engineer Agent
 ```
@@ -322,6 +325,8 @@ After all agents report back, synthesize — do NOT concatenate.
 **3a. Consolidated Findings**
 
 Merge findings across all personas, deduplicating where multiple personas flagged the same issue. Note when multiple personas independently flagged something — that's signal.
+
+Out-of-scope observations never enter the findings table, severity counts, or decision points. Collect them in a separate short list and surface them to the PO as notes per `_shared/orchestration.md` §"Findings From Personas Are Notes, Not Beads" — a persona finding that escaped the scope fence gets demoted here, not laundered into a finding.
 
 | # | Finding | Flagged By | Severity | Category |
 |---|---------|-----------|----------|----------|
