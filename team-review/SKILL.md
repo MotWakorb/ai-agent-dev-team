@@ -88,6 +88,9 @@ Launch all 10 persona agents simultaneously using the Agent tool. **Spawn as `pe
 - The depth mode (quick or full)
 - An instruction to be critical — this is a review, not a rubber stamp
 - An instruction to flag disagreements with other personas' likely positions
+- The scope fence below, verbatim — reviews evaluate the target as given; they do not move the goalposts:
+
+  > "Scope fence: every finding must be anchored in the review target (file:line, section, or config key within it — or, for a running-system target, an observed endpoint or behavior of the system under review). Do not recommend fixes, refactors, or additions to code, systems, or processes outside the target, and do not expand the target to justify a finding. Cross-persona commentary ('the architect's design creates friction here') stays in scope when its impact is anchored in the target; designing the fix to the other domain is not. If you notice a real issue outside the boundary, record it as a one-line 'Out-of-scope observation' — no severity rating, no remediation design — and move on. One exception: a Critical security defect is never demoted by this fence — report it as a full finding flagged 'outside requested scope,' per conflict-resolution.md's non-negotiable Critical rule."
 
 #### Security Engineer Agent
 ```
@@ -323,6 +326,8 @@ After all agents report back, synthesize — do NOT concatenate.
 
 Merge findings across all personas, deduplicating where multiple personas flagged the same issue. Note when multiple personas independently flagged something — that's signal.
 
+Out-of-scope observations never enter the findings table, severity counts, or decision points — a persona finding that escaped the scope fence gets demoted here, not laundered into a finding. Collect them in a separate short list and surface them to the PO as notes; whether a note then becomes a bead follows `_shared/orchestration.md` §"Findings From Personas Are Notes, Not Beads". One exception, mirroring the fence: Critical security findings are never demoted — they enter the findings table flagged "outside requested scope," and Step 4's non-negotiable rule applies.
+
 | # | Finding | Flagged By | Severity | Category |
 |---|---------|-----------|----------|----------|
 | 1 | [Description] | Security, Code Reviewer | Critical/Block | Security |
@@ -439,6 +444,7 @@ Rules for every round after the first (3 retros: a seven-round goalpost-shifting
 - **Freeze an acceptance matrix before the first remediation round**: finding / user impact / frozen expected behavior / required evidence / disposition (fix-now, accepted follow-up, dropped). The matrix — not each round's mood — defines the merge boundary.
 - **Subsequent rounds are delta-only against the matrix.** A reviewer may add a blocker only when the delta introduces a concrete regression, new evidence invalidates an accepted premise, or the finding is a genuinely new, never-triaged block-level defect — code-reviewer §"Review History Discipline"'s block-level exception takes precedence over delta scope. What delta-only forbids is re-litigating items the matrix already dispositioned, not catching real defects. Accepted follow-ups stay visible but cannot silently return to the merge gate.
 - **Re-verify, don't re-trust.** Delta-round personas verify prior findings closed with file:line evidence at the new head AND fresh-review the new code; reviewers re-run their original measurement method (fresh samples) rather than re-checking previously cited examples — method-based re-verification caught two regressions in the field that example-checking would have approved. The orchestrator re-confirms headline closures independently.
+- **Delta-round prompts carry the Step 2 scope fence verbatim.** Remediation rounds are the documented goalpost-moving vector; the fence applies to every round, not just the first.
 - **No full-fleet re-dispatch for small remediations.** Once the matrix exists, a small fix gets a targeted delta review by the personas whose findings it touches — not another ten-persona ceremony.
 - **Tier-boundary drift is a scope flag.** When rounds start producing architectural hardening beyond the component's declared deployment tier, propose freezing scope to tier-appropriate fixes ("fix concrete correctness regressions; track distributed durability separately; once accepted, do not reopen") instead of waiting for the PO to notice the churn.
 - **Consolidate public output.** Public PR communication is at most three consolidated comments — initial blocker matrix, remediation verification, final terminal verdict. Persona debate belongs in internal synthesis, not a public trail of shifting intermediate positions.
