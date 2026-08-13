@@ -28,10 +28,15 @@ class HookTest(unittest.TestCase):
         for path in self._dirs:
             shutil.rmtree(path, ignore_errors=True)
 
-    def mkdir(self, *, git=False, onboarded=False, beads=False, prefix=None):
+    def mkdir(self, *, git=False, onboarded=False, beads=False, prefix=None,
+              worktree_of=None):
         path = tempfile.mkdtemp()
         self._dirs.append(path)
-        if git or onboarded or beads:
+        if worktree_of:
+            # Linked worktree: .git is a gitdir-pointer FILE, not a directory.
+            with open(os.path.join(path, ".git"), "w") as f:
+                f.write(f"gitdir: {worktree_of}/.git/worktrees/wt\n")
+        elif git or onboarded or beads:
             os.makedirs(os.path.join(path, ".git"))
         if onboarded:
             open(os.path.join(path, "COMPONENTS.md"), "w").close()
@@ -42,8 +47,9 @@ class HookTest(unittest.TestCase):
                     f.write(f"issue-prefix: {prefix}\n")
         return path
 
-    def hook(self, command, cwd, agent_id=None):
-        payload = {"tool_name": "Bash", "tool_input": {"command": command},
+    def hook(self, command, cwd, agent_id=None, tool="Bash", tool_input=None):
+        payload = {"tool_name": tool,
+                   "tool_input": tool_input or {"command": command},
                    "cwd": cwd}
         if agent_id is not None:
             payload["agent_id"] = agent_id
@@ -234,6 +240,67 @@ class HookTest(unittest.TestCase):
         root = self.mkdir(onboarded=True)
         scratch = self.mkdir()
         self.assert_allowed(f"cd {scratch} && echo hi > x.txt", cwd=root)
+
+    # --- Fix 4: linked worktrees — .git is a FILE, root follows the edited
+    #     path (retro 2026-07-30-22)
+
+    def edit_of(self, path):
+        return dict(tool="Edit", tool_input={"file_path": path})
+
+    def test_orchestrator_edit_in_linked_worktree_is_denied(self):
+        # A linked worktree's .git is a gitdir-pointer file; the guard must
+        # still see the worktree as an onboarded project root.
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        self.assert_denied(None, cwd=wt, **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_worktree_edit_is_denied_when_cwd_is_elsewhere(self):
+        # cwd resets between tool calls; classification must follow the
+        # edited path, not cwd.
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        scratch = self.mkdir()
+        self.assert_denied(None, cwd=scratch,
+                           **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_subagent_edit_in_linked_worktree_is_allowed(self):
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        self.assert_allowed(None, cwd=wt, agent_id="a1",
+                            **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_unonboarded_worktree_edit_is_allowed(self):
+        main = self.mkdir(git=True)
+        wt = self.mkdir(worktree_of=main)
+        self.assert_allowed(None, cwd=wt, **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_worktree_under_dot_claude_is_not_config_exempt(self):
+        # Worktrees often live at <main>/.claude/worktrees/<x>; the config
+        # exemption applies to paths under the EDITED root, not the parent's.
+        main = self.mkdir(onboarded=True)
+        wt = os.path.join(main, ".claude", "worktrees", "agent-x")
+        os.makedirs(wt)
+        with open(os.path.join(wt, ".git"), "w") as f:
+            f.write(f"gitdir: {main}/.git/worktrees/agent-x\n")
+        open(os.path.join(wt, "COMPONENTS.md"), "w").close()
+        self.assert_denied(None, cwd=main,
+                           **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_worktree_own_claude_config_is_still_exempt(self):
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        self.assert_allowed(None, cwd=wt,
+                            **self.edit_of(f"{wt}/.claude/settings.json"))
+
+    def test_gitfile_root_arms_bash_guard_from_worktree_subdir(self):
+        # .git-file detection also fixes the cwd-derived Bash rules: a
+        # redirect run from a subdir of an onboarded worktree is an in-tree
+        # write, not "out of project".
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        sub = os.path.join(wt, "src")
+        os.makedirs(sub)
+        self.assert_denied(f"echo hi > {wt}/src/x.txt", cwd=sub)
 
     # --- The hook's own self-check stays green
 

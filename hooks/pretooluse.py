@@ -57,7 +57,9 @@ def deny(reason):
 def git_root(path):
     path = os.path.realpath(path)
     while path != os.path.dirname(path):
-        if os.path.isdir(os.path.join(path, ".git")):
+        # .git is a directory in a main checkout but a gitdir-pointer FILE
+        # in a linked worktree (retro 2026-07-30-22) — both mark a root.
+        if os.path.exists(os.path.join(path, ".git")):
             return path
         path = os.path.dirname(path)
     return None
@@ -171,24 +173,33 @@ def main():
     if root == os.path.realpath(REPO_DIR):
         return  # meta-work on the skill-system repo itself is exempt
 
-    # Rule A: orchestrator edit block
+    # Rule A: orchestrator edit block. The root resolves from the EDITED
+    # path, not cwd — cwd resets between tool calls, so a cwd-derived root
+    # misclassified linked-worktree edits as out-of-project and bypassed
+    # this guard entirely (retro 2026-07-30-22).
     if agent_id is None and tool in ("Edit", "Write", "NotebookEdit", "apply_patch"):
-        if not onboarded:
-            return
         if tool == "apply_patch":
             candidates = patch_paths(tool_input.get("patch") or tool_input.get("input") or "")
         else:
             candidates = [tool_input.get("file_path") or tool_input.get("notebook_path") or ""]
         for candidate in candidates:
+            if not candidate:
+                continue
             path = os.path.realpath(candidate if os.path.isabs(candidate)
                                     else os.path.join(cwd, candidate))
-            if not path.startswith(root + os.sep):
-                continue  # scratchpad, retros, user-level config
+            eroot = git_root(path)
+            if eroot is None or not os.path.isfile(
+                    os.path.join(eroot, "COMPONENTS.md")):
+                continue  # scratchpad, retros, un-onboarded projects
             if os.path.basename(path) in ORCH_WRITABLE_BASENAMES:
                 continue
-            if (f"{os.sep}.claude{os.sep}" in path
-                    or f"{os.sep}.codex{os.sep}" in path
-                    or f"{os.sep}.agents{os.sep}" in path):
+            # Config exemption is judged under the edited root: a worktree
+            # living at <main>/.claude/worktrees/x is a project tree, not
+            # tool configuration.
+            rel = path[len(eroot):]
+            if (f"{os.sep}.claude{os.sep}" in rel
+                    or f"{os.sep}.codex{os.sep}" in rel
+                    or f"{os.sep}.agents{os.sep}" in rel):
                 continue  # tool configuration is orchestrator territory
             break
         else:
@@ -369,6 +380,18 @@ def _self_check():
         "tool_name": "apply_patch",
         "tool_input": {"patch": "*** Begin Patch\n*** Update File: AGENTS.md\n@@\n-old\n+new\n*** End Patch\n"},
     }, onboarded)
+    # Rule A in a linked worktree (retro 2026-07-30-22): .git is a gitdir-
+    # pointer FILE, and the root resolves from the edited path — a stale cwd
+    # outside the tree must not disarm the guard
+    def onboarded_worktree(tmp):
+        os.rmdir(os.path.join(tmp, ".git"))
+        with open(os.path.join(tmp, ".git"), "w") as f:
+            f.write("gitdir: /main/.git/worktrees/wt\n")
+        onboarded(tmp)
+
+    assert run(edit, onboarded_worktree)
+    assert run(dict(edit, cwd="<scratch>"), onboarded_worktree)
+    assert not run(dict(edit, agent_id="a1"), onboarded_worktree)
     # Rule A2: orchestrator sed -i / redirect into project denied when onboarded;
     # subagent, non-onboarded, /tmp and /dev/null targets all allowed
     sedi = {"tool_name": "Bash", "tool_input": {"command": "sed -i '' 's/a/b/' <root>/web/app.css"}}
