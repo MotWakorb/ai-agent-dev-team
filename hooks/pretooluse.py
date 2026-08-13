@@ -54,15 +54,30 @@ def deny(reason):
     sys.exit(0)
 
 
-def git_root(path):
+def git_roots(path):
+    """All enclosing git roots, nearest first.
+
+    .git is a directory in a main checkout but a gitdir-pointer FILE in a
+    linked worktree (retro 2026-07-30-22) — both mark a root. Guards walk
+    ALL ancestor roots, never just the nearest: any file named .git marks a
+    root, so a planted `touch src/.git` — or a real submodule/vendored
+    nested repo — would otherwise make the nearest root look un-onboarded
+    and strip the enclosing project's guard (nearest-root injection,
+    PR #12 review F1).
+    """
     path = os.path.realpath(path)
+    roots = []
     while path != os.path.dirname(path):
-        # .git is a directory in a main checkout but a gitdir-pointer FILE
-        # in a linked worktree (retro 2026-07-30-22) — both mark a root.
         if os.path.exists(os.path.join(path, ".git")):
-            return path
+            roots.append(path)
         path = os.path.dirname(path)
-    return None
+    return roots
+
+
+def onboarded_root(path):
+    """Nearest enclosing git root that carries COMPONENTS.md, or None."""
+    return next((r for r in git_roots(path)
+                 if os.path.isfile(os.path.join(r, "COMPONENTS.md"))), None)
 
 
 def bash_scans(cmd):
@@ -159,7 +174,12 @@ def main():
     agent_id = data.get("agent_id")  # absent => main agent (orchestrator)
     agent_type = data.get("agent_type") or ""
 
-    root = git_root(cwd) or os.path.realpath(cwd)
+    # `onboarded` (Rules 1/A2) is any-ancestor: cwd inside a nested repo is
+    # still inside the enclosing onboarded project. `root` is the onboarded
+    # ancestor when one exists — A2's tree boundary — else the nearest root.
+    roots = git_roots(cwd)
+    nroot = roots[0] if roots else os.path.realpath(cwd)
+    root = onboarded_root(cwd) or nroot
     onboarded = os.path.isfile(os.path.join(root, "COMPONENTS.md"))
 
     # Rule 1: ceremony gate
@@ -170,7 +190,8 @@ def main():
                  "personas default to enterprise rigor. Run /onboard first.")
         return
 
-    if root == os.path.realpath(REPO_DIR):
+    meta = os.path.realpath(REPO_DIR)
+    if meta == nroot or meta in roots:
         return  # meta-work on the skill-system repo itself is exempt
 
     # Rule A: orchestrator edit block. The root resolves from the EDITED
@@ -187,16 +208,16 @@ def main():
                 continue
             path = os.path.realpath(candidate if os.path.isabs(candidate)
                                     else os.path.join(cwd, candidate))
-            eroot = git_root(path)
-            if eroot is None or not os.path.isfile(
-                    os.path.join(eroot, "COMPONENTS.md")):
+            # Guarded if ANY ancestor root is onboarded — a nearer planted
+            # or nested .git cannot strip the enclosing project's guard.
+            if onboarded_root(path) is None:
                 continue  # scratchpad, retros, un-onboarded projects
             if os.path.basename(path) in ORCH_WRITABLE_BASENAMES:
                 continue
-            # Config exemption is judged under the edited root: a worktree
+            # Config exemption is judged under the NEAREST root: a worktree
             # living at <main>/.claude/worktrees/x is a project tree, not
             # tool configuration.
-            rel = path[len(eroot):]
+            rel = path[len(git_roots(path)[0]):]
             if (f"{os.sep}.claude{os.sep}" in rel
                     or f"{os.sep}.codex{os.sep}" in rel
                     or f"{os.sep}.agents{os.sep}" in rel):
@@ -291,7 +312,12 @@ def main():
         # via `-F -`, a file written later in the same compound command,
         # paths with shell substitutions) fail open: never block on a
         # message we cannot read.
-        broot = git_root(ecwd) or os.path.realpath(ecwd)
+        # Any-ancestor for the same nearest-root-injection reason as Rule A:
+        # the beads root is the nearest ancestor root carrying .beads.
+        broots = git_roots(ecwd)
+        broot = next((r for r in broots
+                      if os.path.isdir(os.path.join(r, ".beads"))),
+                     broots[0] if broots else os.path.realpath(ecwd))
         commit = re.search(r"\bgit\s+commit\b", cmd)
         if (commit
                 and broot != os.path.realpath(REPO_DIR)
@@ -387,11 +413,23 @@ def _self_check():
         os.rmdir(os.path.join(tmp, ".git"))
         with open(os.path.join(tmp, ".git"), "w") as f:
             f.write("gitdir: /main/.git/worktrees/wt\n")
+        os.makedirs(os.path.join(tmp, "src"))
         onboarded(tmp)
 
-    assert run(edit, onboarded_worktree)
+    # cwd sits in a SUBDIR of the worktree: with cwd at the root itself the
+    # pre-fix realpath(cwd) fallback passed by accident (review F2)
+    assert run(dict(edit, cwd="<root>/src"), onboarded_worktree)
     assert run(dict(edit, cwd="<scratch>"), onboarded_worktree)
     assert not run(dict(edit, agent_id="a1"), onboarded_worktree)
+    # Rule A nearest-root injection (review F1): a planted .git in a subdir
+    # must not strip the enclosing onboarded project's guard
+    def planted(tmp):
+        onboarded(tmp)
+        os.makedirs(os.path.join(tmp, "src"))
+        open(os.path.join(tmp, "src", ".git"), "w").close()
+
+    assert run(edit, planted)
+    assert run(dict(edit, cwd="<root>/src"), planted)
     # Rule A2: orchestrator sed -i / redirect into project denied when onboarded;
     # subagent, non-onboarded, /tmp and /dev/null targets all allowed
     sedi = {"tool_name": "Bash", "tool_input": {"command": "sed -i '' 's/a/b/' <root>/web/app.css"}}

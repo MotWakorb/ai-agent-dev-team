@@ -249,10 +249,15 @@ class HookTest(unittest.TestCase):
 
     def test_orchestrator_edit_in_linked_worktree_is_denied(self):
         # A linked worktree's .git is a gitdir-pointer file; the guard must
-        # still see the worktree as an onboarded project root.
+        # still see the worktree as an onboarded project root. cwd sits in a
+        # SUBDIR of the worktree: with cwd at the root itself, the pre-fix
+        # realpath(cwd) fallback landed on the root and passed by accident,
+        # so the test discriminated nothing (review F2).
         main = self.mkdir(onboarded=True)
         wt = self.mkdir(onboarded=True, worktree_of=main)
-        self.assert_denied(None, cwd=wt, **self.edit_of(f"{wt}/src/app.py"))
+        sub = os.path.join(wt, "src")
+        os.makedirs(sub)
+        self.assert_denied(None, cwd=sub, **self.edit_of(f"{wt}/src/app.py"))
 
     def test_worktree_edit_is_denied_when_cwd_is_elsewhere(self):
         # cwd resets between tool calls; classification must follow the
@@ -301,6 +306,52 @@ class HookTest(unittest.TestCase):
         sub = os.path.join(wt, "src")
         os.makedirs(sub)
         self.assert_denied(f"echo hi > {wt}/src/x.txt", cwd=sub)
+
+    # --- Fix 5: nearest-root injection — a planted or nested .git must not
+    #     strip the enclosing onboarded project's guard (PR #12 review F1)
+
+    def test_nested_repo_edit_is_denied_when_ancestor_is_onboarded(self):
+        # cwd AND edit target both inside a nested repo (.git directory —
+        # the submodule/vendored shape) under an onboarded project. Red
+        # pre-fix (cwd's nearest root un-onboarded) AND red at fe07f20
+        # (edited path's nearest root un-onboarded).
+        root = self.mkdir(onboarded=True)
+        sub = os.path.join(root, "vendor", "dep")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_denied(None, cwd=sub, **self.edit_of(f"{sub}/lib.py"))
+
+    def test_planted_gitfile_does_not_exempt_orchestrator_edit(self):
+        # The reviewers' live repro: `touch src/.git`, orchestrator at the
+        # project root edits into the subtree.
+        root = self.mkdir(onboarded=True)
+        sub = os.path.join(root, "src")
+        os.makedirs(sub)
+        open(os.path.join(sub, ".git"), "w").close()
+        self.assert_denied(None, cwd=root, **self.edit_of(f"{sub}/app.py"))
+
+    def test_nested_repo_cwd_does_not_disarm_bash_write_guard(self):
+        # A2's cwd-derived `onboarded` walks all ancestor roots too: a
+        # redirect from inside the nested repo into the enclosing onboarded
+        # tree is still an in-tree write.
+        root = self.mkdir(onboarded=True)
+        sub = os.path.join(root, "vendor", "dep")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_denied(f"echo hi > {root}/src/x.txt", cwd=sub)
+
+    def test_nested_repo_cwd_does_not_bypass_bead_commit_gate(self):
+        # Rule 3's beads root is the nearest ancestor root carrying .beads,
+        # not the nearest root of any kind.
+        beaded = self.mkdir(onboarded=True, beads=True)
+        sub = os.path.join(beaded, "src")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_denied('git commit -m "no bead ref here"', cwd=sub)
+
+    def test_unonboarded_nested_repo_edit_stays_allowed(self):
+        # No onboarded ancestor anywhere: nested-repo edits stay unguarded.
+        outer = self.mkdir(git=True)
+        sub = os.path.join(outer, "vendor", "dep")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_allowed(None, cwd=sub, **self.edit_of(f"{sub}/lib.py"))
 
     # --- The hook's own self-check stays green
 
