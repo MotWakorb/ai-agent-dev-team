@@ -28,10 +28,15 @@ class HookTest(unittest.TestCase):
         for path in self._dirs:
             shutil.rmtree(path, ignore_errors=True)
 
-    def mkdir(self, *, git=False, onboarded=False, beads=False, prefix=None):
+    def mkdir(self, *, git=False, onboarded=False, beads=False, prefix=None,
+              worktree_of=None):
         path = tempfile.mkdtemp()
         self._dirs.append(path)
-        if git or onboarded or beads:
+        if worktree_of:
+            # Linked worktree: .git is a gitdir-pointer FILE, not a directory.
+            with open(os.path.join(path, ".git"), "w") as f:
+                f.write(f"gitdir: {worktree_of}/.git/worktrees/wt\n")
+        elif git or onboarded or beads:
             os.makedirs(os.path.join(path, ".git"))
         if onboarded:
             open(os.path.join(path, "COMPONENTS.md"), "w").close()
@@ -42,8 +47,9 @@ class HookTest(unittest.TestCase):
                     f.write(f"issue-prefix: {prefix}\n")
         return path
 
-    def hook(self, command, cwd, agent_id=None):
-        payload = {"tool_name": "Bash", "tool_input": {"command": command},
+    def hook(self, command, cwd, agent_id=None, tool="Bash", tool_input=None):
+        payload = {"tool_name": tool,
+                   "tool_input": tool_input or {"command": command},
                    "cwd": cwd}
         if agent_id is not None:
             payload["agent_id"] = agent_id
@@ -234,6 +240,176 @@ class HookTest(unittest.TestCase):
         root = self.mkdir(onboarded=True)
         scratch = self.mkdir()
         self.assert_allowed(f"cd {scratch} && echo hi > x.txt", cwd=root)
+
+    # --- Fix 4: linked worktrees — .git is a FILE, root follows the edited
+    #     path (retro 2026-07-30-22)
+
+    def edit_of(self, path):
+        return dict(tool="Edit", tool_input={"file_path": path})
+
+    def test_orchestrator_edit_in_linked_worktree_is_denied(self):
+        # A linked worktree's .git is a gitdir-pointer file; the guard must
+        # still see the worktree as an onboarded project root. cwd sits in a
+        # SUBDIR of the worktree: with cwd at the root itself, the pre-fix
+        # realpath(cwd) fallback landed on the root and passed by accident,
+        # so the test discriminated nothing (review F2).
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        sub = os.path.join(wt, "src")
+        os.makedirs(sub)
+        self.assert_denied(None, cwd=sub, **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_worktree_edit_is_denied_when_cwd_is_elsewhere(self):
+        # cwd resets between tool calls; classification must follow the
+        # edited path, not cwd.
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        scratch = self.mkdir()
+        self.assert_denied(None, cwd=scratch,
+                           **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_subagent_edit_in_linked_worktree_is_allowed(self):
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        self.assert_allowed(None, cwd=wt, agent_id="a1",
+                            **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_unonboarded_worktree_edit_is_allowed(self):
+        main = self.mkdir(git=True)
+        wt = self.mkdir(worktree_of=main)
+        self.assert_allowed(None, cwd=wt, **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_worktree_under_dot_claude_is_not_config_exempt(self):
+        # Worktrees often live at <main>/.claude/worktrees/<x>; the config
+        # exemption applies to paths under the EDITED root, not the parent's.
+        main = self.mkdir(onboarded=True)
+        wt = os.path.join(main, ".claude", "worktrees", "agent-x")
+        os.makedirs(wt)
+        with open(os.path.join(wt, ".git"), "w") as f:
+            f.write(f"gitdir: {main}/.git/worktrees/agent-x\n")
+        open(os.path.join(wt, "COMPONENTS.md"), "w").close()
+        self.assert_denied(None, cwd=main,
+                           **self.edit_of(f"{wt}/src/app.py"))
+
+    def test_worktree_own_claude_config_is_still_exempt(self):
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        self.assert_allowed(None, cwd=wt,
+                            **self.edit_of(f"{wt}/.claude/settings.json"))
+
+    def test_gitfile_root_arms_bash_guard_from_worktree_subdir(self):
+        # .git-file detection also fixes the cwd-derived Bash rules: a
+        # redirect run from a subdir of an onboarded worktree is an in-tree
+        # write, not "out of project".
+        main = self.mkdir(onboarded=True)
+        wt = self.mkdir(onboarded=True, worktree_of=main)
+        sub = os.path.join(wt, "src")
+        os.makedirs(sub)
+        self.assert_denied(f"echo hi > {wt}/src/x.txt", cwd=sub)
+
+    # --- Fix 5: nearest-root injection — a planted or nested .git must not
+    #     strip the enclosing onboarded project's guard (PR #12 review F1)
+
+    def test_nested_repo_edit_is_denied_when_ancestor_is_onboarded(self):
+        # cwd AND edit target both inside a nested repo (.git directory —
+        # the submodule/vendored shape) under an onboarded project. Red
+        # pre-fix (cwd's nearest root un-onboarded) AND red at fe07f20
+        # (edited path's nearest root un-onboarded).
+        root = self.mkdir(onboarded=True)
+        sub = os.path.join(root, "vendor", "dep")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_denied(None, cwd=sub, **self.edit_of(f"{sub}/lib.py"))
+
+    def test_planted_gitfile_does_not_exempt_orchestrator_edit(self):
+        # The reviewers' live repro: `touch src/.git`, orchestrator at the
+        # project root edits into the subtree.
+        root = self.mkdir(onboarded=True)
+        sub = os.path.join(root, "src")
+        os.makedirs(sub)
+        open(os.path.join(sub, ".git"), "w").close()
+        self.assert_denied(None, cwd=root, **self.edit_of(f"{sub}/app.py"))
+
+    def test_nested_repo_cwd_does_not_disarm_bash_write_guard(self):
+        # A2's cwd-derived `onboarded` walks all ancestor roots too: a
+        # redirect from inside the nested repo into the enclosing onboarded
+        # tree is still an in-tree write.
+        root = self.mkdir(onboarded=True)
+        sub = os.path.join(root, "vendor", "dep")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_denied(f"echo hi > {root}/src/x.txt", cwd=sub)
+
+    def test_nested_repo_cwd_does_not_bypass_bead_commit_gate(self):
+        # Rule 3's beads root is the nearest ancestor root carrying .beads,
+        # not the nearest root of any kind.
+        beaded = self.mkdir(onboarded=True, beads=True)
+        sub = os.path.join(beaded, "src")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_denied('git commit -m "no bead ref here"', cwd=sub)
+
+    def test_unonboarded_nested_repo_edit_stays_allowed(self):
+        # No onboarded ancestor anywhere: nested-repo edits stay unguarded.
+        outer = self.mkdir(git=True)
+        sub = os.path.join(outer, "vendor", "dep")
+        os.makedirs(os.path.join(sub, ".git"))
+        self.assert_allowed(None, cwd=sub, **self.edit_of(f"{sub}/lib.py"))
+
+    # --- Fix 6: meta exemption must not strip guards off an onboarded
+    #     project nested inside a REPO_DIR-rooted checkout (PR #12 review:
+    #     mirrored ancestor-stripping of F1)
+
+    def mk_repo_with_hook(self):
+        """A simulated dev-team SOURCE checkout: its own .git and the hook
+        copied in at hooks/, so the copy's REPO_DIR (dirname(dirname(file)))
+        resolves to this dir — reachable only from a source checkout, not an
+        install.sh deployment where the hook sits under .claude/."""
+        repo = tempfile.mkdtemp()
+        self._dirs.append(repo)
+        os.makedirs(os.path.join(repo, ".git"))
+        os.makedirs(os.path.join(repo, "hooks"))
+        shutil.copy(HOOK, os.path.join(repo, "hooks", "pretooluse.py"))
+        return repo, os.path.join(repo, "hooks", "pretooluse.py")
+
+    def hook_at(self, hook_path, cwd, tool="Bash", tool_input=None):
+        proc = subprocess.run(
+            [sys.executable, hook_path],
+            input=json.dumps({"tool_name": tool, "tool_input": tool_input,
+                              "cwd": cwd}),
+            capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        if not proc.stdout.strip():
+            return None
+        return json.loads(proc.stdout)["hookSpecificOutput"]
+
+    def test_onboarded_project_nested_under_repo_dir_is_still_guarded(self):
+        # Red at c096168 (ALLOW): `meta in roots` exempted any cwd with
+        # REPO_DIR anywhere in its ancestry, so an orchestrator edit into a
+        # genuinely-onboarded project nested under the source checkout
+        # skipped Rule A. Green with the fix (DENY): an onboarded ancestor
+        # blocks the exemption.
+        repo, hook = self.mk_repo_with_hook()
+        proj = os.path.join(repo, "projects", "onboarded")
+        os.makedirs(os.path.join(proj, ".git"))
+        open(os.path.join(proj, "COMPONENTS.md"), "w").close()
+        decision = self.hook_at(
+            hook, cwd=proj, tool="Edit",
+            tool_input={"file_path": f"{proj}/app.py"})
+        self.assertIsNotNone(
+            decision, "meta exemption stripped Rule A from a nested "
+            "onboarded project")
+        self.assertEqual(decision["permissionDecision"], "deny")
+
+    def test_meta_work_on_repo_dir_source_checkout_stays_exempt(self):
+        # The legitimate case the fix must preserve: editing the skill
+        # system's own files in a REPO_DIR checkout with no onboarded
+        # ancestor stays exempt (nearest root IS REPO_DIR).
+        repo, hook = self.mk_repo_with_hook()
+        skills = os.path.join(repo, "skills")
+        os.makedirs(skills)
+        decision = self.hook_at(
+            hook, cwd=repo, tool="Edit",
+            tool_input={"file_path": f"{skills}/orchestration.md"})
+        self.assertIsNone(
+            decision, decision and decision.get("permissionDecisionReason"))
 
     # --- The hook's own self-check stays green
 
