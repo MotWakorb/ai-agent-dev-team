@@ -75,7 +75,7 @@ A number is not verified because a command ran — it's verified when the method
 
 ### A Check Must Be Able to Fail While the Thing Is Broken
 
-Before trusting any verification check, ask: what value or arrangement would satisfy this check while the thing being checked is still broken? If such a value exists, the check is not a check — a boolean presence test is satisfied by a placeholder, a first-match grep is satisfied by an unrelated hit, a non-empty file is satisfied by a file containing only a branch name. Design the adversarial case in at authoring time, not after the false PASS ships (5 retros post-dating the proxy-check rule: a "byte-identical" account that couldn't authenticate, a secrets check that never ran, a "0 failures" verdict from a 34-byte file, an audit that enumerated the wrong claim categories, tests proving helpers instead of the production transition).
+Before trusting any verification check, ask: what value or arrangement would satisfy this check while the thing being checked is still broken? If such a value exists, the check is not a check — a boolean presence test is satisfied by a placeholder, a first-match grep is satisfied by an unrelated hit, a non-empty file is satisfied by a file containing only a branch name. Design the adversarial case in at authoring time, not after the false PASS ships (5 retros post-dating the proxy-check rule — `_shared/orchestration.md` §"Claims are hypotheses until verified", "Proxy checks are not the check": a "byte-identical" account that couldn't authenticate, a secrets check that never ran, a "0 failures" verdict from a 34-byte file, an audit that enumerated the wrong claim categories, tests proving helpers instead of the production transition).
 
 Two mechanical rules that fall out:
 
@@ -134,7 +134,7 @@ Environment traps propagate forward, not per-agent: the first time a trap is dis
 
 Every asserted invariant or non-negotiable property in a durable document — an ADR, a docstring, a code comment, a test name — either cites the test that enforces it or states plainly that it is a convention, not an enforced guarantee. An unenforced claim dressed as a fact stops the next reader from checking: in the field, an ADR bolded "coverage cannot silently shrink" while a refactor shrank coverage by a third reporting green; a comment asserted an invariant the code didn't hold; tests were named for invariants they never exercised (4 retros).
 
-Absolute words are the audit trigger: "all," "always," "never," "unchanged," "atomic," "required gate" in a doc or report get checked against executable evidence before merge — or narrowed to what the evidence supports.
+Absolute words in claims of fact are the audit trigger: "all," "always," "never," "unchanged," "atomic," "required gate" describing system state, coverage, or completion in a doc or report get checked against executable evidence before merge — or narrowed to what the evidence supports. (Imperative rule prose — "never do X" — is an instruction, not a claim of fact, and is out of scope.)
 
 ## Deferred Behavior Names Its Trigger
 

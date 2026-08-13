@@ -105,15 +105,15 @@ The brief-level instruction is necessary because tool access is inherited from t
 
 The evidence allowance exists because a fence that demands "confirmed, not theoretical" severity while forbidding every mechanism of confirmation is internally contradictory — in the field, the most valuable finding of a ten-persona review required breaching the old blanket fence to build a repro, a choice that shouldn't be the agent's to make. Confirmation happens in disposable space with mandatory cleanup and disclosure; the shared tree stays untouched.
 
-### Orchestrator-authored automation meets the persona bar
-
-Scripts the orchestrator writes for itself — leak gates, upload probes, capture harnesses, safety checks — are held to the same fail-closed standard as persona-authored code; "setup scaffolding" is not an exemption category. Two field failures (2 retros): an upload script that fell back to index 0 when its element lookup failed landed on the legacy whole-config-restore card — on a destructive-adjacent surface, lookup failure must throw, never fall back to the first match; and a screenshot-redaction gate was bypassed by the driver's own *error* path, writing 17 ungated frames showing live credentials. When a harness has a safety gate, audit the error paths for gate bypass, not just the happy path.
-
 ### CWD drift
 
 Multi-step bash sequences (`cd /path/to/worktree && command`) lose track of cwd over time. If you've changed directory in a prior bash call and the next call assumes a different cwd, you operate on the wrong tree.
 
 Rule: prefer absolute paths over `cd` chains. When a `cd` is unavoidable, lead the next destructive operation with `pwd` to confirm.
+
+## Orchestrator-Authored Automation Meets the Persona Bar
+
+Scripts the orchestrator writes for itself — leak gates, upload probes, capture harnesses, safety checks — are held to the same fail-closed standard as persona-authored code; "setup scaffolding" is not an exemption category. Two field failures (2 retros): an upload script that fell back to index 0 when its element lookup failed landed on the legacy whole-config-restore card — on a destructive-adjacent surface, lookup failure must throw, never fall back to the first match; and a screenshot-redaction gate was bypassed by the driver's own *error* path, writing 17 ungated frames showing live credentials. Orchestrator-authored gates and scrubbers are enforcement code and carry that contract's obligations — self-tests, error-path bypass audits — per `_shared/engineering-discipline.md` §"Enforcement Code Tests Itself".
 
 ## Agent Continuation
 
@@ -134,7 +134,7 @@ Do not reference tools that may not exist in the current environment. Frame cont
 
 ## Cost Rides the Delivery Report
 
-The orchestrator tallies token spend, not just reads it. Every completion notification carries a cost line; nothing aggregates it unless the orchestrator does. Report a per-bead/per-PR token line alongside each merge so aggregate waste is visible at PR #2 instead of PR #8 — in the field, cost was invisible to the delivery view all session, both times surfaced only because the PO watched a counter the orchestrator never summed ("a delivery report that omits the resource line isn't a delivery report," 2 retros).
+The orchestrator tallies token spend, not just reads it. Every completion notification carries a cost line; in both field sessions nothing aggregated them until the PO asked. Report a per-bead/per-PR token line alongside each merge so aggregate waste is visible at PR #2 instead of PR #8 — in the field, cost was invisible to the delivery view all session, both times surfaced only because the PO watched a counter the orchestrator never summed ("a delivery report that omits the resource line isn't a delivery report," 2 retros).
 
 ## Agent Model Selection
 
@@ -283,6 +283,8 @@ At the first remediation-round authorization, state a stopping condition alongsi
 
 - **The orchestrator proposes the ceiling** at the first diminishing-returns signal — repeated defect class, flattening findings, rising cost. It sees the curve first; presenting an nth round as an open question with no recommendation to stop is the failure mode
 - **Open-ended continuation gets a stopping rule up front.** "Keep working" against a large backlog is authorized with an explicit boundary ("finish the active PRs, then the top three ready items, then stop") — without one, review depth and backlog breadth read as uncontrolled goal movement
+
+(Reviewer-side counterpart: `code-reviewer/SKILL.md` §"Same Defect Class Twice Means Stop" — the same diminishing-returns family, seen from inside the review.)
 
 ### Ship-authorization split
 
