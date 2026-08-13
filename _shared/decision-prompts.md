@@ -40,6 +40,10 @@ When an option implies a later irreversible action (merge, deploy, delete, publi
 
 When a decision forks on an unknown that a small measurement could settle, the block proposes the probe — bounded and specific ("a ≤10-call API probe to determine whether the bug is in module A or B"), with a recommendation — instead of asking the PO to choose blind between expensive paths. Two field wins codified here: a ten-minute sampling pass (page density, referenced-vs-total ratio) avoided a multi-week crawl; a bounded authorized probe settled fix scope before any implementation dispatch. Frame the fork, recommend, get the cheap fact first.
 
+## Step-1-of-N requests get the terminal state first
+
+When a request has the shape of the first step of a migration or build-out ("set up repos for those," "move X to Y," "add a catalog for these"), ask for the intended terminal state before executing the first structural step. Incremental asks against an unstated end state forced three separate reference-sweeps across two repos where one coordinated change would have done, and let "done" shift repeatedly through a long session that a one-line acceptance ladder ("complete when: merged, imported, scanned, adopted, one album proves selective capture") would have anchored (2 retros).
+
 ## Concrete options extract requirements
 
 When eliciting requirements, concrete option-shaped choices beat open-ended questions — POs react to options with requirements they wouldn't produce for an abstract prompt ("how anonymous?" got no answer; a described design option got "we will want to be more invasive" plus the reason). If an abstract question stalls, reframe it as two or three concrete options with consequences.

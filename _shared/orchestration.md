@@ -105,6 +105,10 @@ The brief-level instruction is necessary because tool access is inherited from t
 
 The evidence allowance exists because a fence that demands "confirmed, not theoretical" severity while forbidding every mechanism of confirmation is internally contradictory — in the field, the most valuable finding of a ten-persona review required breaching the old blanket fence to build a repro, a choice that shouldn't be the agent's to make. Confirmation happens in disposable space with mandatory cleanup and disclosure; the shared tree stays untouched.
 
+### Orchestrator-authored automation meets the persona bar
+
+Scripts the orchestrator writes for itself — leak gates, upload probes, capture harnesses, safety checks — are held to the same fail-closed standard as persona-authored code; "setup scaffolding" is not an exemption category. Two field failures (2 retros): an upload script that fell back to index 0 when its element lookup failed landed on the legacy whole-config-restore card — on a destructive-adjacent surface, lookup failure must throw, never fall back to the first match; and a screenshot-redaction gate was bypassed by the driver's own *error* path, writing 17 ungated frames showing live credentials. When a harness has a safety gate, audit the error paths for gate bypass, not just the happy path.
+
 ### CWD drift
 
 Multi-step bash sequences (`cd /path/to/worktree && command`) lose track of cwd over time. If you've changed directory in a prior bash call and the next call assumes a different cwd, you operate on the wrong tree.
@@ -113,7 +117,9 @@ Rule: prefer absolute paths over `cd` chains. When a `cd` is unavoidable, lead t
 
 ## Agent Continuation
 
-When continuing prior agent work, do not spawn a fresh agent with no context. The new dispatch must reconstruct the prior agent's state:
+Dispatch mode — fresh vs. resumed — is an explicit per-round decision, not a habit. **Fresh is the default for fix rounds**: a fresh agent with the findings as its spec re-pays nothing, while resumption re-pays the entire prior transcript (in the field, a five-item fix started at 217K tokens and climbed toward 300K to change four files — and the orchestrator never noticed until the PO summed a number it had access to all along). Resumption is reserved for when the fix changes *reasoning* the agent just built, not merely code it just wrote. The fresh-agent-with-findings-as-spec pattern is also field-proven on delta reviews: cheaper than resumption, and it caught a fix-induced regression (2 retros).
+
+When continuing prior agent work fresh, do not spawn the new agent with no context. The new dispatch must reconstruct the prior agent's state:
 
 ```
 ## Continuing prior investigation
@@ -125,6 +131,10 @@ When continuing prior agent work, do not spawn a fresh agent with no context. Th
 ```
 
 Do not reference tools that may not exist in the current environment. Frame continuation rules in terms of actions ("include prior context in the new dispatch") not tools ("use SendMessage"). A rule that depends on a tool you don't have is worse than no rule — it creates false confidence.
+
+## Cost Rides the Delivery Report
+
+The orchestrator tallies token spend, not just reads it. Every completion notification carries a cost line; nothing aggregates it unless the orchestrator does. Report a per-bead/per-PR token line alongside each merge so aggregate waste is visible at PR #2 instead of PR #8 — in the field, cost was invisible to the delivery view all session, both times surfaced only because the PO watched a counter the orchestrator never summed ("a delivery report that omits the resource line isn't a delivery report," 2 retros).
 
 ## Agent Model Selection
 
@@ -187,6 +197,12 @@ For enterprise upshifts and home-lab security-holds, "critical path" means: any 
 A watcher notification is never the sole mechanism for noticing that state changed. Check-watchers stalled five times across two field sessions, each time parking an engineer on a notification that never arrived while every required check sat green. Poll the actual state (`gh pr checks`, `gh run view`, process status) at a bounded interval as the primary mechanism; treat watcher events as an accelerator, not the source of truth.
 
 **Fan-outs declare their liveness policy up front.** Before spawning N parallel agents whose results will be published together, pick one: wait for all N, or publish at a defined quorum with a mandatory addendum when stragglers return. Never improvise a timeout mid-wait — in the field the orchestrator "invented a timeout, guessed wrong, and shipped a review with a self-documented hole in it," declaring an agent dead minutes before it returned. Blind sleep-and-poll loops (~8 turns burned in one session) are the symptom that no policy was declared (2 retros).
+
+## Progress Is Visible; Gaps Surface at the Decision Point
+
+During long-running gates (test suites, CI, builds), emit status at a fixed cadence — revision, phase, elapsed time, check counts, next decision point — polled from source-of-truth state. Don't wait silently for completion: in the field the PO had to ask in increasingly direct language whether work was happening at all, and invisible progress is experienced as no progress (1 retro, central finding; conversational status-polling substituting for a native status surface recurs in a second).
+
+**Disclosure buried in a deliverable is not telling the PO.** An unmet acceptance criterion, instruction, or known gap is raised as an explicit question at the decision point it affects ("the drill round-trip hasn't run on this build — merge anyway?"), never only noted in a PR body or report and carried past the merge (2 retros).
 
 ## Don't Merge Past In-Flight Verification
 
@@ -261,6 +277,13 @@ Corollary (PO-established): defects in the persona system's own hooks and skills
 
 A mid-flight PO decision that adds a new surface or failure domain gets its own bead with its own acceptance criteria — it does not ride the in-flight PR. The orchestrator *recommends* the split, not merely offers it. Field evidence (2 retros): a decision that added a new failure domain rode an in-flight PR through a seven-round review saga; separately, a 4,152-line PR bundled an entire new subsystem into a feature change with no independent revert path, no ADR, and no bead of its own.
 
+### Remediation rounds get a ceiling
+
+At the first remediation-round authorization, state a stopping condition alongside the scope decision: "fix this round, then merge unless something Block-level appears." Unbounded sequences are the documented failure — one PR consumed ~1.1M tokens across three reviews and three remediation rounds with every individual decision locally correct and nobody bounding the sequence; a six-round saga was bounded only when a scheduled retro surfaced what was visible at round two (2 retros).
+
+- **The orchestrator proposes the ceiling** at the first diminishing-returns signal — repeated defect class, flattening findings, rising cost. It sees the curve first; presenting an nth round as an open question with no recommendation to stop is the failure mode
+- **Open-ended continuation gets a stopping rule up front.** "Keep working" against a large backlog is authorized with an explicit boundary ("finish the active PRs, then the top three ready items, then stop") — without one, review depth and backlog breadth read as uncontrolled goal movement
+
 ### Ship-authorization split
 
 Engineers work through commit; the orchestrator — whose context holds the PO's actual words — does push, PR, and merge. Never relay PO consent into a subagent brief ("the PO said yes"): permission classifiers correctly refuse relayed consent, and three classifier walls in one session proved the pattern structurally cannot work. When a ship step genuinely must run inside a subagent, the brief instructs it to wait synchronously on any gate or check it arms — background watches die at turn-end (see engineering-discipline §"Background Processes Stay Observable").
@@ -290,6 +313,8 @@ The helpfulness instinct is the failure mode: filing the bead feels proactive, b
 
 **Mid-session, twice-surfaced is the escalation trigger.** An item surfaced to the PO twice without an answer does not get a third identical surfacing — it goes into a `DECISIONS NEEDED` entry with a stated default ("defaulting to deferred unless you override by <checkpoint>"), and the chosen default is recorded when it fires. Silence must never silently expand scope or freeze a known regression in place: in the field, advisory items raised twice defaulted to deferred with no way to distinguish "deliberately deferred" from "didn't see it," scope grew because defer offers went unanswered, and a known accessibility regression was asked about three times across a session and never answered (2 retros).
 
+Session close inherits the same rule: every surfaced-but-unanswered item gets its stated default recorded at close — not left as an open question that evaporates. Two post-landing recurrences of the third-identical-surfacing pattern (the same question unanswered three times across two sessions; an ambiguous one-word reply re-raised in three turns with a real guard question still hanging at session end) show the failure now lives at the close boundary (2 retros).
+
 ## Verify Premises Before Briefing
 
 When delegating to N agents, a wrong premise in the brief multiplies N times. Before including data in an agent brief, check both the data and the framing — what the data is, and what context it sits in. Framing failures are harder to spot because the brief looks complete.
@@ -312,6 +337,15 @@ When delegating to N agents, a wrong premise in the brief multiplies N times. Be
 ### Briefs label epistemic status
 
 A brief states as fact only what was verified in-session; everything else is written as a hypothesis with its evidence cited. Audit and guard output describes what an artifact *declares*, never what is live — the orchestrator's inference on top of it ("this rule is dead," "this is shadowed," "seed only runs on fresh init") is a hypothesis, and relaying it with the grammar of a finding is the documented failure mode (3 retros: a wrong seed-semantics premise written into a bead and brief as fact, a half-wrong CSS-specificity premise plus a badly overstated regeneration warning, audit declarations relayed as deletion instructions). Write "the audit reports X; confirm the render site and which declaration wins before choosing an approach" — never "X is dead, delete it." Hypotheses briefed as facts inherit the trust briefs are normally given: the recipient builds on them instead of checking them, and the error surfaces after ship instead of before.
+
+### Every outbound artifact carries the brief's bar
+
+Epistemic discipline is not brief-shaped — it covers everything the orchestrator hands to anyone (4 retros post-dating the briefs-label-epistemic-status rule):
+
+- **A prescribed remedy carries the same verification obligation as a finding.** When a remediation brief names the implementation mechanism ("route the probe through the client method"), the author has read the code path that mechanism touches first — an asserted-unverified remedy in the field inherited a retry branch nobody had read and turned one login into two
+- **Commands handed to a human are diffed against the artifact that defines them.** A hand-off command the PO will run at material cost is checked field-by-field against the recorded configuration it must reproduce — and the check is stated. In the field the orchestrator wrote the command from memory and omitted the flag the entire exercise depended on, while its own comparison table containing the flag sat in the same session
+- **Persisted specs mark claims ASSUMED until a run promotes them.** An agent-authored spec or runbook that outlives the session states which behavioral claims were verified and which are guesses — downstream readers otherwise inherit guesses as fact
+- **Evidence cited as a target state must describe the target state.** Don't brief an agent on expected behavior from a findings file that documents the *broken* behavior
 
 ### General rule
 
