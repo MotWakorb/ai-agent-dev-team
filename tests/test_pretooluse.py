@@ -353,6 +353,64 @@ class HookTest(unittest.TestCase):
         os.makedirs(os.path.join(sub, ".git"))
         self.assert_allowed(None, cwd=sub, **self.edit_of(f"{sub}/lib.py"))
 
+    # --- Fix 6: meta exemption must not strip guards off an onboarded
+    #     project nested inside a REPO_DIR-rooted checkout (PR #12 review:
+    #     mirrored ancestor-stripping of F1)
+
+    def mk_repo_with_hook(self):
+        """A simulated dev-team SOURCE checkout: its own .git and the hook
+        copied in at hooks/, so the copy's REPO_DIR (dirname(dirname(file)))
+        resolves to this dir — reachable only from a source checkout, not an
+        install.sh deployment where the hook sits under .claude/."""
+        repo = tempfile.mkdtemp()
+        self._dirs.append(repo)
+        os.makedirs(os.path.join(repo, ".git"))
+        os.makedirs(os.path.join(repo, "hooks"))
+        shutil.copy(HOOK, os.path.join(repo, "hooks", "pretooluse.py"))
+        return repo, os.path.join(repo, "hooks", "pretooluse.py")
+
+    def hook_at(self, hook_path, cwd, tool="Bash", tool_input=None):
+        proc = subprocess.run(
+            [sys.executable, hook_path],
+            input=json.dumps({"tool_name": tool, "tool_input": tool_input,
+                              "cwd": cwd}),
+            capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        if not proc.stdout.strip():
+            return None
+        return json.loads(proc.stdout)["hookSpecificOutput"]
+
+    def test_onboarded_project_nested_under_repo_dir_is_still_guarded(self):
+        # Red at c096168 (ALLOW): `meta in roots` exempted any cwd with
+        # REPO_DIR anywhere in its ancestry, so an orchestrator edit into a
+        # genuinely-onboarded project nested under the source checkout
+        # skipped Rule A. Green with the fix (DENY): an onboarded ancestor
+        # blocks the exemption.
+        repo, hook = self.mk_repo_with_hook()
+        proj = os.path.join(repo, "projects", "onboarded")
+        os.makedirs(os.path.join(proj, ".git"))
+        open(os.path.join(proj, "COMPONENTS.md"), "w").close()
+        decision = self.hook_at(
+            hook, cwd=proj, tool="Edit",
+            tool_input={"file_path": f"{proj}/app.py"})
+        self.assertIsNotNone(
+            decision, "meta exemption stripped Rule A from a nested "
+            "onboarded project")
+        self.assertEqual(decision["permissionDecision"], "deny")
+
+    def test_meta_work_on_repo_dir_source_checkout_stays_exempt(self):
+        # The legitimate case the fix must preserve: editing the skill
+        # system's own files in a REPO_DIR checkout with no onboarded
+        # ancestor stays exempt (nearest root IS REPO_DIR).
+        repo, hook = self.mk_repo_with_hook()
+        skills = os.path.join(repo, "skills")
+        os.makedirs(skills)
+        decision = self.hook_at(
+            hook, cwd=repo, tool="Edit",
+            tool_input={"file_path": f"{skills}/orchestration.md"})
+        self.assertIsNone(
+            decision, decision and decision.get("permissionDecisionReason"))
+
     # --- The hook's own self-check stays green
 
     def test_self_check_passes(self):

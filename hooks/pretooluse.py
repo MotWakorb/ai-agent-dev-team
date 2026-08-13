@@ -190,9 +190,15 @@ def main():
                  "personas default to enterprise rigor. Run /onboard first.")
         return
 
+    # Meta-work on the skill-system repo itself is exempt. The ancestor
+    # clause (`meta in roots`) covers running from a REPO_DIR source
+    # checkout, but must NOT strip guards off a genuinely-onboarded project
+    # nested inside it — that mirrors the ancestor-stripping F1 closed. So
+    # the ancestor exemption only fires when cwd is NOT inside an onboarded
+    # project (`onboarded` == onboarded_root(cwd) is not None here).
     meta = os.path.realpath(REPO_DIR)
-    if meta == nroot or meta in roots:
-        return  # meta-work on the skill-system repo itself is exempt
+    if meta == nroot or (meta in roots and not onboarded):
+        return
 
     # Rule A: orchestrator edit block. The root resolves from the EDITED
     # path, not cwd — cwd resets between tool calls, so a cwd-derived root
