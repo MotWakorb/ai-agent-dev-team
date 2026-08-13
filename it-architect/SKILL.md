@@ -180,6 +180,8 @@ For every significant decision, produce an ADR:
 - **Exit Path**: [If this decision needs to be reversed, what does that look like?]
 ```
 
+**Asserted invariants cite their enforcement.** Any non-negotiable property an ADR states ("coverage cannot silently shrink," "writes are atomic") either cites the test or gate that enforces it, or says plainly it's a convention. An ADR also gets an internal-consistency read before it ships — in the field, a document's operational rule fired on MAJOR version bumps while its own reasoning established MINOR as the breaking-change axis, and no gate caught the disagreement: internal-consistency checks on ADRs are cheap and nobody ran one (see `_shared/engineering-discipline.md` §"Asserted Invariants Cite Their Enforcement").
+
 ## Conflict Resolution
 
 Follow the shared [Conflict Resolution Protocol](../_shared/conflict-resolution.md). Key points for this role:

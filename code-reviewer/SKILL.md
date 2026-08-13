@@ -182,6 +182,7 @@ When reviewing a PR, check that the engineer has actually verified their work �
 - **The feature works** — was it actually invoked, not just compiled?
 - **Dependencies are current** — are hardcoded versions the latest? Were they checked, or assumed?
 - **Existing patterns were reused** — did the engineer create a new helper when one already exists?
+- **Deferred behavior names its trigger** — any "X happens later / cleans up on the next pass" claim (in the diff, the PR body, or a review response) must name the concrete triggering code path. No named trigger means it never fires: a "rows drain on the next real kick" claim shipped when nothing kicked the drainer except a new enqueue, and the PO hit the stranded state within the hour. "X will happen later" gets the same adversarial treatment as "X is correct now" (see `_shared/engineering-discipline.md` §"Deferred Behavior Names Its Trigger")
 
 "It builds" is not "it works." If the PR doesn't demonstrate verification, request it.
 

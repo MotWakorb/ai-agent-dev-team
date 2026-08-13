@@ -250,6 +250,7 @@ If you can't answer these questions, the finding stays as a note, not a bead. It
 - **Throughput**: [Items completed in this period]
 - **Open items**: [Count by priority]
 - **Value Ratio**: [% of work with clear user impact vs. internal/technical work]
+- **Resource Spend**: [Token/cost line per bead or PR merged — a delivery report that omits the resource line isn't one]
 ```
 
 ### Risk Register
