@@ -55,6 +55,15 @@ A guard, snapshot suite, or e2e spec that no gate executes is documentation, not
 - **Never regenerate shared baselines in a contaminated worktree.** Regenerating golden artifacts alongside unrelated uncommitted WIP silently launders unreviewed changes into the baseline — isolate first
 - **Test code gets gates too.** e2e and test sources are typechecked and linted like production code; a verification layer with no verification of its own is a blind spot by definition
 
+## The Instrument Gets Audited, Not Just Run
+
+A recurring verification instrument — a drill, an audit, a fixture set, a comparison script — has structural blind spots that running it again will never surface: eleven consecutive drill runs against a wiped destination could not distinguish the two "what happens to things you already have" modes, leaving two defect classes unreachable; a field-comparison that checked one boolean called an unauthenticatable account byte-identical (3 retros, plus fixtures unrepresentative of production scale in a fourth). Standing checks:
+
+- **Audits and drills declare scope up front**: which claim categories are covered and which are explicitly not — "audited" is never implicitly "all of it." An audit without a stated scope silently inherits the blind spots of whoever wrote it
+- **Periodically audit what the instrument cannot detect** — ask "what isn't this testing?" at planning time, before the run is sealed, and every few runs thereafter
+- **A repeated NOT-EXERCISED verdict escalates**: three consecutive runs carrying the same unexercised check force either a procedure change or an explicit PO decision to stop carrying it
+- **Fixtures include a populated destination as a standing dimension**, not an occasional special round — clean-slate fixtures structurally hide merge/upgrade-path defects
+
 ## Triage Classifies Before Engineering Dispatch
 
 A user report's classification determines the fix shape, so classify before an engineer is dispatched — not after a code change is already in flight. Four classes:

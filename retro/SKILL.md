@@ -86,6 +86,8 @@ Examples of real feedback, not softened generalizations:
 
 Do NOT write "the PO could provide more context" or other vague politeness. Name the moment.
 
+**Provenance is a fact to verify, not infer.** Before any line of the form "the PO said/did/instructed X," produce the message or PO-owned artifact that shows it — if that can't be produced in one lookup, the line doesn't go in. Before criticizing a constraint in this section, check who authored it: instruction layers include the harness system prompt, project hooks, and prior-agent-authored specs, none of which is the PO. This failed twice in one retro (both drafts attributed to the PO things the PO never wrote) and once more in another (a retro blamed the PO for a prompt the agent itself had authored — "To be clear: you authored the prompt"); the corpus already carries two correction commits for exactly this. A retro that misassigns fault gets synced to a shared corpus.
+
 ### Section 4: What the Agent Got Wrong
 
 One thing the agent got wrong or could have handled better. Reference the specific turn or action. This is accountability, not self-deprecation.
@@ -200,4 +202,5 @@ If a lesson is durable enough to warrant saving to memory, do so. If it's sessio
 - **Specific over general** — "At turn 23, when we..." not "Sometimes we could..."
 - **No self-congratulation** — "What we did well" is about the collaboration, not about how great the agent is
 - **No hedging on Section 2** — if the PO made the session harder in any way, say so. Hedging defeats the purpose
+- **Every PO-attribution is sourced** — "the PO said X" requires the message or PO-owned artifact in hand; check authorship before assigning fault (see Section 3)
 - **Personas must not silently average** — if there's tension between perspectives, surface it. That's the point

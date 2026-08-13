@@ -73,6 +73,15 @@ Three enforcement points:
 
 A number is not verified because a command ran — it's verified when the method is checked against what the number claims. Both field failures met the "comes from a command run in-session" bar and were still wrong: a grep across a two-object response counted both countries' providers and shipped as one country's roster, and four consecutive source-line counts were wrong because CSS comments were counted as code (2 retros). Before a count reaches the PO, a brief, or a bead title: confirm the pattern excludes comments (or justify their inclusion), confirm the aggregation spans exactly the objects the claim names, and give decision-grade numbers a second independent method. Never put an unverified count in a bead or commit title — titles get quoted long after their caveats are lost.
 
+### A Check Must Be Able to Fail While the Thing Is Broken
+
+Before trusting any verification check, ask: what value or arrangement would satisfy this check while the thing being checked is still broken? If such a value exists, the check is not a check — a boolean presence test is satisfied by a placeholder, a first-match grep is satisfied by an unrelated hit, a non-empty file is satisfied by a file containing only a branch name. Design the adversarial case in at authoring time, not after the false PASS ships (5 retros post-dating the proxy-check rule — `_shared/orchestration.md` §"Claims are hypotheses until verified", "Proxy checks are not the check": a "byte-identical" account that couldn't authenticate, a secrets check that never ran, a "0 failures" verdict from a 34-byte file, an audit that enumerated the wrong claim categories, tests proving helpers instead of the production transition).
+
+Two mechanical rules that fall out:
+
+- **Never write check-and-announce shell one-liners.** `cmd || echo 'clean ✓'` prints reassurance when the command *fails*; `cmd; echo 'clean'` prints it unconditionally. Capture output into a variable or file, test emptiness explicitly, and let a failed command exit loudly — "found nothing" and "did not run" must be distinguishable in every verification you report
+- **Name the artifact, confirm it contains the result.** Before reporting any measurement or verdict, name the artifact it came from and confirm that artifact actually contains the claimed result — a proxy (file exists, command exited, counter is non-zero) is not the thing
+
 ### Completion Claims Are Re-Derived at Writing Time
 
 A commit message, doc, or status report claiming completion ("all ten route pages are on the new scale," "moved onto the roles," "gates green") is derived from the artifact at the moment of writing — the current diff, the actual rendered state — never carried forward from an earlier assessment. A doc that overstates completion causes the next reader to stop looking: in the field, a commit message claimed ten routes done with eight still off-scale, and a guidelines doc claimed three classes migrated when one was (one retro, two instances; the second retro backs the gates-green bullet below — 2 retros across this section).
@@ -120,6 +129,16 @@ Ship and verification briefs carry the mandatory wording from orchestration §"S
 A gate run under the wrong interpreter or toolchain proves nothing — 9 tests "failing" on a stale ambient library reads as a regression until someone notices `.venv/` was one `ls` away. Before running any verification gate, check for and use the project-local environment (`.venv/bin/python`, the repo's pinned node via `fnm`/`nvm`, worktree bootstrap scripts); never assume ambient tooling matches the project.
 
 Environment traps propagate forward, not per-agent: the first time a trap is discovered in a session (interpreter path, known-flaky test, id-shape convention), it goes into every subsequent dispatch brief — the same venv trap hitting a third agent is an orchestrator failure, not bad luck. The durable fix is a repo-pinned gate script (`scripts/gate.sh` or `make verify`) that selects interpreter and tool paths itself; recommend one wherever gates depend on tribal environment knowledge, and reference it in briefs instead of restating environment facts each time.
+
+## Asserted Invariants Cite Their Enforcement
+
+Every asserted invariant or non-negotiable property in a durable document — an ADR, a docstring, a code comment, a test name — either cites the test that enforces it or states plainly that it is a convention, not an enforced guarantee. An unenforced claim dressed as a fact stops the next reader from checking: in the field, an ADR bolded "coverage cannot silently shrink" while a refactor shrank coverage by a third reporting green; a comment asserted an invariant the code didn't hold; tests were named for invariants they never exercised (4 retros).
+
+Absolute words in claims of fact are the audit trigger: "all," "always," "never," "unchanged," "atomic," "required gate" describing system state, coverage, or completion in a doc or report get checked against executable evidence before merge — or narrowed to what the evidence supports. (Imperative rule prose — "never do X" — is an instruction, not a claim of fact, and is out of scope.)
+
+## Deferred Behavior Names Its Trigger
+
+Any claim that something happens later — "rows drain on the next kick," "cleanup picks it up," a code comment promising future verification — must name the concrete triggering code path. If no code path is the trigger, it never happens: in the field, "the next real kick" was *never* (nothing kicked the drainer except a new enqueue) and the PO hit the stranded state within the hour; a comment promising later verification against upstream was simply never honored (2 retros). A deferred obligation with no named trigger is unresolved work: convert it to a bead at write time, not a comment.
 
 ## Version Currency
 
